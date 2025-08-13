@@ -1,0 +1,154 @@
+name: Upstream parity sync
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch: {}
+
+concurrency:
+  group: upstream-parity-sync
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  # Configure these as repository variables (Settings → Variables → Repository variables)
+  # Example: UPSTREAM_REPO=vercel/ai-chatbot
+  UPSTREAM_REPO: ${{ vars.UPSTREAM_REPO }}
+  UPSTREAM_BRANCH: ${{ vars.UPSTREAM_BRANCH }}
+  BASE_BRANCH: ${{ vars.BASE_BRANCH }}
+  PARITY_BRANCH: ${{ vars.PARITY_BRANCH }}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      # Optional: set if upstream is private. Create a repository secret named UPSTREAM_TOKEN with a PAT that has repo read access on the upstream.
+      UPSTREAM_TOKEN: ${{ secrets.UPSTREAM_TOKEN }}
+    steps:
+      - name: Validate and set defaults
+        run: |
+          if [ -z "${UPSTREAM_REPO}" ]; then
+            echo "Repository variable UPSTREAM_REPO is required (e.g. owner/original-repo)." 1>&2
+            exit 1
+          fi
+          : "${UPSTREAM_BRANCH:=main}"
+          : "${BASE_BRANCH:=main}"
+          : "${PARITY_BRANCH:=upstream-parity}"
+          echo "UPSTREAM_BRANCH=${UPSTREAM_BRANCH}" >> "$GITHUB_ENV"
+          echo "BASE_BRANCH=${BASE_BRANCH}" >> "$GITHUB_ENV"
+          echo "PARITY_BRANCH=${PARITY_BRANCH}" >> "$GITHUB_ENV"
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Add upstream remote and fetch
+        run: |
+          set -euo pipefail
+          if git remote | grep -q '^upstream$'; then
+            git remote remove upstream
+          fi
+          if [ -n "${UPSTREAM_TOKEN-}" ]; then
+            echo "Using token to fetch upstream (private upstream support)."
+            git remote add upstream https://${UPSTREAM_TOKEN}@github.com/${UPSTREAM_REPO}.git
+          else
+            git remote add upstream https://github.com/${UPSTREAM_REPO}.git
+          fi
+          git fetch --no-tags upstream ${UPSTREAM_BRANCH}
+          git fetch --no-tags origin
+
+      - name: Sync tags (optional)
+        run: |
+          set -euo pipefail
+          git fetch --tags upstream
+          git push --tags origin
+
+      - name: Create/update parity branch from upstream (no-op if unchanged)
+        run: |
+          set -euo pipefail
+          UPSTREAM_SHA=$(git rev-parse "upstream/${UPSTREAM_BRANCH}")
+          echo "Upstream ${UPSTREAM_BRANCH} @ ${UPSTREAM_SHA}"
+          # Get remote parity SHA if it exists; otherwise blank
+          PARITY_REMOTE_SHA=$(git ls-remote --heads origin "${PARITY_BRANCH}" | awk '{print $1}') || true
+          echo "Remote parity SHA: ${PARITY_REMOTE_SHA:-<none>}"
+
+          if [ "${PARITY_REMOTE_SHA:-}" = "${UPSTREAM_SHA}" ]; then
+            echo "Parity branch already up to date with upstream; skipping push."
+            exit 0
+          fi
+
+          # Create/update local parity branch to match upstream SHA
+          if git show-ref --quiet --heads "refs/heads/${PARITY_BRANCH}"; then
+            git checkout "${PARITY_BRANCH}"
+          else
+            git checkout --detach "${UPSTREAM_SHA}"
+            git branch -f "${PARITY_BRANCH}" "${UPSTREAM_SHA}"
+            git checkout "${PARITY_BRANCH}"
+          fi
+          git reset --hard "${UPSTREAM_SHA}"
+          # Push only if changed, using force-with-lease for safety
+          git push --force-with-lease --set-upstream origin "${PARITY_BRANCH}"
+
+      - name: Detect diff vs base branch
+        id: diff
+        run: |
+          set -e
+          # Count commits on parity not in base
+          git fetch --no-tags origin ${BASE_BRANCH}
+          COMMITS_AHEAD=$(git rev-list --left-right --count origin/${BASE_BRANCH}...${PARITY_BRANCH} | awk '{print $2}')
+          echo "commits_ahead=${COMMITS_AHEAD}" >> "$GITHUB_OUTPUT"
+          echo "Parity branch ahead by ${COMMITS_AHEAD} commits."
+
+      - name: Open or update PR from parity to base
+        if: steps.diff.outputs.commits_ahead != '0'
+        uses: repo-sync/pull-request@v2
+        with:
+          source_branch: ${{ env.PARITY_BRANCH }}
+          destination_branch: ${{ env.BASE_BRANCH }}
+          pr_title: "Sync with upstream: ${{ env.UPSTREAM_REPO }}@${{ env.UPSTREAM_BRANCH }}"
+          pr_body: |
+            Automated sync from upstream.
+            - Upstream: https://github.com/${{ env.UPSTREAM_REPO }} (branch: ${{ env.UPSTREAM_BRANCH }})
+            - Parity branch: `${{ env.PARITY_BRANCH }}`
+            - Base branch: `${{ env.BASE_BRANCH }}`
+          pr_label: "upstream, automation"
+          pr_draft: false
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Enable auto-merge on PR (optional)
+        if: steps.diff.outputs.commits_ahead != '0'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const head = `${owner}:${process.env.PARITY_BRANCH}`;
+            const base = process.env.BASE_BRANCH;
+            const { data: prs } = await github.pulls.list({ owner, repo, head, base, state: 'open' });
+            if (!prs.length) { core.info('No open PR found for auto-merge'); return; }
+            const pr = prs[0];
+            try {
+              await github.graphql(
+                `mutation($pr: ID!) { enablePullRequestAutoMerge(input: { pullRequestId: $pr, mergeMethod: SQUASH }) { clientMutationId } }`,
+                { pr: pr.node_id }
+              );
+              core.info(`Auto-merge enabled on PR #${pr.number}`);
+            } catch (e) {
+              core.warning(`Failed to enable auto-merge: ${e.message || e}`);
+            }
+
+      - name: No changes detected
+        if: steps.diff.outputs.commits_ahead == '0'
+        run: echo "No upstream changes to PR."
+
+
