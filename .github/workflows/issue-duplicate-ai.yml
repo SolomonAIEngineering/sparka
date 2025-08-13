@@ -1,0 +1,80 @@
+name: AI duplicate issue triage
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  duplicate-triage:
+    runs-on: ubuntu-latest
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Guard missing Anthropic key
+        if: env.ANTHROPIC_API_KEY == ''
+        run: |
+          echo "ANTHROPIC_API_KEY is not set. Skipping duplicate triage." && exit 0
+
+      - name: Checkout (optional)
+        uses: actions/checkout@v4
+
+      - name: Install opencode
+        run: curl -fsSL https://opencode.ai/install | bash
+
+      - name: Run AI duplicate check
+        id: ai
+        env:
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          set -euo pipefail
+          PROMPT=$(cat <<'EOP'
+You are an assistant that helps triage new GitHub issues by detecting likely duplicates in THIS repository.
+
+Instructions:
+- Search existing issues for potential duplicates considering:
+  1) Similar titles or descriptions
+  2) Same error messages or symptoms
+  3) Related functionality or components
+  4) Similar feature requests
+- Output EXACTLY ONE of the following:
+  A) The single line: NO_DUPLICATE
+  B) A GitHub-ready comment body that starts with:
+     "👋 This issue might be a duplicate of existing issues. Please check:"
+     and then includes a bulleted list of `- #<issue_number>: <brief reason>` with 1–5 items, followed by
+     a short suggestion to review those issues first.
+
+Context:
+Title: ${ISSUE_TITLE}
+Body:
+${ISSUE_BODY}
+EOP
+)
+          opencode run -m anthropic/claude-sonnet-4-20250514 "$PROMPT" | tee ai_comment.txt
+          FIRST_LINE=$(head -n1 ai_comment.txt | tr -d '\r')
+          if [ "$FIRST_LINE" = "NO_DUPLICATE" ]; then
+            echo "result=NO_DUPLICATE" >> "$GITHUB_OUTPUT"
+          else
+            echo "result=COMMENT" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Comment on the issue if duplicates found
+        if: steps.ai.outputs.result == 'COMMENT'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('ai_comment.txt', 'utf8');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+
+
