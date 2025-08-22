@@ -1,5 +1,5 @@
 'use client';
-import { Chat } from '@/components/chat';
+import { ChatSystem } from '@/components/chat-system';
 import { getDefaultThread } from '@/lib/thread-utils';
 import { useMemo } from 'react';
 import { WithSkeleton } from '@/components/ui/skeleton';
@@ -50,7 +50,7 @@ export function SharedChatPage({ id }: { id: string }) {
         isLoading={isChatLoading || isMessagesLoading}
         className="w-full h-full"
       >
-        <div className="flex h-screen w-full" />
+        <div className="flex h-dvh w-full" />
       </WithSkeleton>
     );
   }
@@ -65,8 +65,7 @@ export function SharedChatPage({ id }: { id: string }) {
         isLoading={isChatLoading || isMessagesLoading}
         className="w-full"
       >
-        {/* // Shared chats don't need chat input provider */}
-        <Chat
+        <ChatSystem
           id={chat.id}
           initialMessages={initialThreadMessages}
           isReadonly={true}

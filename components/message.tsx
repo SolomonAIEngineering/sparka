@@ -1,5 +1,4 @@
 'use client';
-import { AnimatePresence, motion } from 'motion/react';
 import { memo, useState } from 'react';
 import type { Vote } from '@/lib/db/schema';
 import { MessageActions } from './message-actions';
@@ -9,19 +8,24 @@ import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import { MessageEditor } from './message-editor';
 import { SourcesAnnotations } from './message-annotations';
 import { AttachmentList } from './attachment-list';
-import { Skeleton } from './ui/skeleton';
+import { PartialMessageLoading } from './partial-message-loading';
 import { ImageModal } from './image-modal';
-import type { UseChatHelpers } from '@ai-sdk/react';
-import type { ChatMessage } from '@/lib/ai/types';
-import { useChatId, useMessageById } from '@/lib/stores/chat-store';
+import {
+  useChatId,
+  useMessageById,
+  useMessageRoleById,
+} from '@/lib/stores/chat-store';
 import { MessageParts } from './message-parts';
+import {
+  Message as AIMessage,
+  MessageContent as AIMessageContent,
+} from '@/components/ai-elements/message';
 
 interface BaseMessageProps {
   messageId: string;
   vote: Vote | undefined;
   isLoading: boolean;
   isReadonly: boolean;
-  sendMessage: UseChatHelpers<ChatMessage>['sendMessage'];
   parentMessageId: string | null;
 }
 
@@ -30,7 +34,6 @@ const PureUserMessage = ({
   vote,
   isLoading,
   isReadonly,
-  sendMessage,
   parentMessageId,
 }: BaseMessageProps) => {
   const chatId = useChatId();
@@ -67,102 +70,100 @@ const PureUserMessage = ({
   if (!textPart || !chatId) return null;
 
   return (
-    <div
-      className={cn(
-        'w-full flex flex-col items-end',
-        mode === 'edit'
-          ? 'max-w-full'
-          : 'group-data-[role=user]/message:ml-auto group-data-[role=user]/message:max-w-2xl group-data-[role=user]/message:w-fit',
-      )}
-    >
-      <div
+    <>
+      <AIMessage
+        from="user"
         className={cn(
-          'flex flex-col gap-4 w-full',
-          message.role === 'user' && mode !== 'edit' && 'items-end',
+          // TODO: Consider not using this max-w class override when editing is cohesive with displaying the message
+          mode === 'edit' ? 'max-w-full [&>div]:max-w-full' : undefined,
+          'py-1',
         )}
       >
-        {mode === 'view' ? (
-          !isReadonly ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  data-testid="message-content"
-                  className="cursor-pointer hover:opacity-80 transition-opacity"
-                  onClick={() => setMode('edit')}
-                >
-                  <div
+        <div
+          className={cn(
+            'flex flex-col gap-2 w-full',
+            message.role === 'user' && mode !== 'edit' && 'items-end',
+          )}
+        >
+          {mode === 'view' ? (
+            !isReadonly ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
                     data-testid="message-content"
-                    className="flex flex-col gap-4 w-full bg-muted px-3 py-2 rounded-2xl border dark:border-zinc-700 text-left"
+                    className="cursor-pointer hover:opacity-80 transition-opacity"
+                    onClick={() => setMode('edit')}
                   >
-                    <AttachmentList
-                      attachments={getAttachmentsFromMessage(message)}
-                      onImageClick={handleImageClick}
-                      testId="message-attachments"
-                    />
-                    <pre className="whitespace-pre-wrap font-sans">
-                      {textPart.text}
-                    </pre>
-                  </div>
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>Click to edit message</TooltipContent>
-            </Tooltip>
+                    <AIMessageContent
+                      data-testid="message-content"
+                      className="text-left"
+                    >
+                      <AttachmentList
+                        attachments={getAttachmentsFromMessage(message)}
+                        onImageClick={handleImageClick}
+                        testId="message-attachments"
+                      />
+                      <pre className="whitespace-pre-wrap font-sans">
+                        {textPart.text}
+                      </pre>
+                    </AIMessageContent>
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Click to edit message</TooltipContent>
+              </Tooltip>
+            ) : (
+              <AIMessageContent
+                data-testid="message-content"
+                className="text-left"
+              >
+                <AttachmentList
+                  attachments={getAttachmentsFromMessage(message)}
+                  onImageClick={handleImageClick}
+                  testId="message-attachments"
+                />
+                <pre className="whitespace-pre-wrap font-sans">
+                  {textPart.text}
+                </pre>
+              </AIMessageContent>
+            )
           ) : (
-            <div
-              data-testid="message-content"
-              className="flex flex-col gap-4 w-full bg-muted px-3 py-2 rounded-2xl border dark:border-zinc-700 text-left"
-            >
-              <AttachmentList
-                attachments={getAttachmentsFromMessage(message)}
-                onImageClick={handleImageClick}
-                testId="message-attachments"
+            <div className="flex flex-row gap-2 items-start">
+              <MessageEditor
+                key={message.id}
+                chatId={chatId}
+                message={message}
+                setMode={setMode}
+                parentMessageId={parentMessageId}
               />
-              <pre className="whitespace-pre-wrap font-sans">
-                {textPart.text}
-              </pre>
             </div>
-          )
-        ) : (
-          <div className="flex flex-row gap-2 items-start">
-            <MessageEditor
-              key={message.id}
+          )}
+
+          <div className="self-end">
+            <MessageActions
+              key={`action-${message.id}`}
               chatId={chatId}
-              message={message}
-              setMode={setMode}
-              sendMessage={sendMessage}
-              parentMessageId={parentMessageId}
+              messageId={message.id}
+              vote={vote}
+              isLoading={isLoading}
+              isReadOnly={isReadonly}
             />
           </div>
-        )}
-
-        <div className="self-end">
-          <MessageActions
-            key={`action-${message.id}`}
-            chatId={chatId}
-            messageId={message.id}
-            role={message.role}
-            vote={vote}
-            isLoading={isLoading}
-            isReadOnly={isReadonly}
-            sendMessage={sendMessage}
-          />
         </div>
-      </div>
+      </AIMessage>
       <ImageModal
         isOpen={imageModal.isOpen}
         onClose={handleImageModalClose}
         imageUrl={imageModal.imageUrl}
         imageName={imageModal.imageName}
       />
-    </div>
+    </>
   );
 };
 
 const UserMessage = memo(PureUserMessage, (prevProps, nextProps) => {
   if (prevProps.messageId !== nextProps.messageId) return false;
   if (prevProps.isReadonly !== nextProps.isReadonly) return false;
-  if (prevProps.sendMessage !== nextProps.sendMessage) return false;
   if (prevProps.parentMessageId !== nextProps.parentMessageId) return false;
   if (!equal(prevProps.vote, nextProps.vote)) return false;
   if (prevProps.isLoading !== nextProps.isLoading) return false;
@@ -175,47 +176,38 @@ const PureAssistantMessage = ({
   vote,
   isLoading,
   isReadonly,
-  sendMessage,
 }: Omit<BaseMessageProps, 'parentMessageId'>) => {
   const chatId = useChatId();
-  const message = useMessageById(messageId);
 
-  if (!chatId || !message) return null;
+  if (!chatId) return null;
 
   return (
-    <div className="w-full">
-      <div className="flex flex-col gap-4 w-full">
-        {message.metadata?.isPartial && message.parts.length === 0 && (
-          <div className="flex flex-col gap-2">
-            <Skeleton className="h-4 w-4/5 rounded-full" />
-            <Skeleton className="h-4 w-3/5 rounded-full" />
-            <Skeleton className="h-4 w-2/5 rounded-full" />
-          </div>
-        )}
-
-        <MessageParts
-          message={message}
-          isLoading={isLoading}
-          isReadonly={isReadonly}
-        />
+    <AIMessage from="assistant" className="w-full py-1">
+      <div className="flex flex-col gap-2 w-full">
+        <AIMessageContent className="text-left px-0">
+          <PartialMessageLoading messageId={messageId} />
+          <MessageParts
+            messageId={messageId}
+            isLoading={isLoading}
+            isReadonly={isReadonly}
+          />
+        </AIMessageContent>
 
         <SourcesAnnotations
-          parts={message.parts}
-          key={`sources-annotations-${message.id}`}
+          key={`sources-annotations-${messageId}`}
+          messageId={messageId}
         />
 
         <MessageActions
-          key={`action-${message.id}`}
+          key={`action-${messageId}`}
           chatId={chatId}
-          messageId={message.id}
-          role={message.role}
+          messageId={messageId}
           vote={vote}
           isLoading={isLoading}
           isReadOnly={isReadonly}
-          sendMessage={sendMessage}
         />
       </div>
-    </div>
+    </AIMessage>
   );
 };
 
@@ -224,7 +216,6 @@ const AssistantMessage = memo(PureAssistantMessage, (prevProps, nextProps) => {
   if (prevProps.vote !== nextProps.vote) return false;
   if (prevProps.isLoading !== nextProps.isLoading) return false;
   if (prevProps.isReadonly !== nextProps.isReadonly) return false;
-  if (prevProps.sendMessage !== nextProps.sendMessage) return false;
 
   return true;
 });
@@ -234,41 +225,30 @@ const PurePreviewMessage = ({
   vote,
   isLoading,
   isReadonly,
-  sendMessage,
   parentMessageId,
 }: BaseMessageProps) => {
-  const message = useMessageById(messageId);
-  if (!message) return null;
+  const role = useMessageRoleById(messageId);
+  if (!role) return null;
 
   return (
-    <AnimatePresence>
-      <motion.div
-        data-testid={`message-${message.role}`}
-        className="w-full mx-auto max-w-3xl px-4 group/message"
-        initial={{ y: 5, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        data-role={message.role}
-      >
-        {message.role === 'user' ? (
-          <UserMessage
-            messageId={messageId}
-            vote={vote}
-            isLoading={isLoading}
-            isReadonly={isReadonly}
-            sendMessage={sendMessage}
-            parentMessageId={parentMessageId}
-          />
-        ) : (
-          <AssistantMessage
-            messageId={messageId}
-            vote={vote}
-            isLoading={isLoading}
-            isReadonly={isReadonly}
-            sendMessage={sendMessage}
-          />
-        )}
-      </motion.div>
-    </AnimatePresence>
+    <>
+      {role === 'user' ? (
+        <UserMessage
+          messageId={messageId}
+          vote={vote}
+          isLoading={isLoading}
+          isReadonly={isReadonly}
+          parentMessageId={parentMessageId}
+        />
+      ) : (
+        <AssistantMessage
+          messageId={messageId}
+          vote={vote}
+          isLoading={isLoading}
+          isReadonly={isReadonly}
+        />
+      )}
+    </>
   );
 };
 
@@ -277,7 +257,6 @@ export const PreviewMessage = memo(
   (prevProps, nextProps) => {
     if (prevProps.isLoading !== nextProps.isLoading) return false;
     if (prevProps.messageId !== nextProps.messageId) return false;
-    if (prevProps.sendMessage !== nextProps.sendMessage) return false;
     if (!equal(prevProps.vote, nextProps.vote)) return false;
     if (prevProps.parentMessageId !== nextProps.parentMessageId) return false;
 

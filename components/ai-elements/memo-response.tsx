@@ -2,7 +2,10 @@
 
 import { cn } from '@/lib/utils';
 import { type ComponentProps, memo, isValidElement } from 'react';
-import { Streamdown, type StreamdownProps } from '../streamdown';
+import {
+  Streamdown,
+  type StreamdownProps,
+} from '../streamdown/memo-streamdown';
 import { CodeBlock, CodeBlockCopyButton } from './code-block';
 
 type ResponseProps = ComponentProps<typeof Streamdown>;
@@ -63,7 +66,10 @@ const components: StreamdownProps['components'] = {
 };
 
 export const Response = memo(
-  ({ className, ...props }: ResponseProps) => (
+  ({
+    className,
+    ...props
+  }: ResponseProps & { messageId: string; partIdx: number }) => (
     <Streamdown
       className={cn(
         'size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0',
