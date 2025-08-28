@@ -29,7 +29,7 @@ export const PreviewAttachment = ({
           onClick={onRemove}
           variant="ghost"
           size="sm"
-          className="absolute -top-2 -right-2 size-5 p-0 rounded-full bg-muted/90 hover:bg-muted text-muted-foreground shadow-sm border border-border z-10"
+          className="absolute -top-2 -right-2 size-5 p-0 rounded-full bg-muted/90 hover:bg-muted text-muted-foreground shadow-xs border border-border z-10"
         >
           <CrossIcon size={10} />
         </Button>
@@ -96,7 +96,9 @@ export const PreviewAttachment = ({
           </div>
         )}
       </div>
-      <div className="text-xs text-zinc-500 max-w-16 truncate">{name}</div>
+      <div className="text-xs text-muted-foreground max-w-16 truncate">
+        {name}
+      </div>
     </div>
   );
 };

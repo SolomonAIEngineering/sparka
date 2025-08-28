@@ -199,13 +199,18 @@ export const LexicalChatInput = React.forwardRef<
 
     return (
       <LexicalComposer initialConfig={initialConfig}>
-        <div className="lexical-editor-container">
+        <div
+          className="lexical-editor-container"
+          style={{
+            borderTop: '0px',
+          }}
+        >
           <PlainTextPlugin
             contentEditable={
               <ContentEditable
                 className={cn(
-                  'focus:outline-none focus-visible:outline-none',
-                  '[&>.lexical-root]:min-h-[20px] [&>.lexical-root]:outline-none',
+                  'focus:outline-hidden focus-visible:outline-hidden',
+                  '[&>.lexical-root]:min-h-[20px] [&>.lexical-root]:outline-hidden',
                   'lexical-content-editable',
                   'editor-input',
                   className,

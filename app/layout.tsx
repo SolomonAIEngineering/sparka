@@ -23,6 +23,7 @@ export const metadata: Metadata = {
 
 export const viewport = {
   maximumScale: 1, // Disable auto-zoom on mobile Safari
+  interactiveWidget: 'resizes-content' as const,
 };
 
 const geist = Geist({
@@ -97,7 +98,9 @@ export default async function RootLayout({
           disableTransitionOnChange
         >
           <Toaster position="top-center" />
+          {/* <TooltipProvider delayDuration={0}> */}
           <TRPCReactProvider>{children}</TRPCReactProvider>
+          {/* </TooltipProvider> */}
         </ThemeProvider>
       </body>
     </html>

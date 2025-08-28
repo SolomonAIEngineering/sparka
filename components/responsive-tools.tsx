@@ -1,5 +1,10 @@
-import React, { type Dispatch, type SetStateAction, useState } from 'react';
-import { Settings2 } from 'lucide-react';
+import React, {
+  type Dispatch,
+  type SetStateAction,
+  useState,
+  createElement,
+} from 'react';
+import { Settings2, X } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import { Button } from './ui/button';
 import {
@@ -9,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
+import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import { Separator } from './ui/separator';
 import { getModelDefinition } from '@/lib/ai/all-models';
 import { LoginPrompt } from './upgrade-cta/login-prompt';
@@ -63,19 +69,24 @@ export function ResponsiveTools({
   };
 
   return (
-    <div className="flex items-center gap-1 @[400px]:gap-2">
+    <div className="flex items-center gap-1 @[400px]:gap-2 ">
       {isAnonymous ? (
         <Popover open={showLoginPopover} onOpenChange={setShowLoginPopover}>
-          <PopoverTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="gap-1 @[400px]:gap-2 p-1.5 h-fit rounded-full"
-            >
-              <Settings2 size={14} />
-              <span className="hidden @[400px]:inline">Tools</span>
-            </Button>
-          </PopoverTrigger>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="gap-1 @[400px]:gap-2 p-1.5 h-8 @[400px]:h-10"
+                >
+                  <Settings2 size={14} />
+                  <span className="hidden @[400px]:inline">Tools</span>
+                </Button>
+              </PopoverTrigger>
+            </TooltipTrigger>
+            <TooltipContent>Select Tools</TooltipContent>
+          </Tooltip>
           <PopoverContent className="w-80 p-0" align="start">
             <LoginPrompt
               title="Sign in to use Tools"
@@ -85,16 +96,21 @@ export function ResponsiveTools({
         </Popover>
       ) : (
         <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="gap-1 @[400px]:gap-2 p-1.5 px-2.5 h-fit rounded-full"
-            >
-              <Settings2 size={14} />
-              <span className="hidden @[400px]:inline">Tools</span>
-            </Button>
-          </DropdownMenuTrigger>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="gap-1 @[400px]:gap-2 p-1.5 px-2.5 h-8 @[400px]:h-10"
+                >
+                  <Settings2 size={14} />
+                  <span className="hidden @[400px]:inline">Tools</span>
+                </Button>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent>Select Tools</TooltipContent>
+          </Tooltip>
           <DropdownMenuContent
             align="start"
             className="w-48"
@@ -145,18 +161,18 @@ export function ResponsiveTools({
             className="bg-muted-foreground/50 h-4"
           />
           <Button
-            variant="outline"
+            variant="ghost"
             size="sm"
             onClick={() => setTool(null)}
-            className="gap-1 @[400px]:gap-2 p-1.5 px-2.5 h-fit rounded-full"
+            className="gap-1 @[400px]:gap-2 rounded-full h-8 @[400px]:h-10 text-primary hover:text-primary/80"
           >
-            {React.createElement(toolDefinitions[activeTool].icon, {
+            {createElement(toolDefinitions[activeTool].icon, {
               size: 14,
             })}
             <span className="hidden @[500px]:inline">
-              {toolDefinitions[activeTool].name}
+              {toolDefinitions[activeTool].shortName}
             </span>
-            <span className="text-xs opacity-70">×</span>
+            <X size={12} className="opacity-70" />
           </Button>
         </>
       )}

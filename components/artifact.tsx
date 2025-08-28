@@ -2,13 +2,14 @@ import { formatDistance } from 'date-fns';
 import { AnimatePresence, motion } from 'motion/react';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { useDebounceCallback, useWindowSize } from 'usehooks-ts';
+import { useIsMobile } from '@/hooks/use-mobile';
 import type { Document, Vote } from '@/lib/db/schema';
-import { MultimodalInput } from './multimodal-input';
+//
 import { Toolbar } from './toolbar';
 import { VersionFooter } from './version-footer';
 import { ArtifactActions } from './artifact-actions';
 import { ArtifactCloseButton } from './artifact-close-button';
-import { ArtifactMessages } from './artifact-messages';
+import { MessagesPane } from './messages-pane';
 import { useSidebar } from './ui/sidebar';
 import { ScrollArea } from './ui/scroll-area';
 import { useArtifact } from '@/hooks/use-artifact';
@@ -20,9 +21,8 @@ import type { UseChatHelpers } from '@ai-sdk/react';
 import type { ChatMessage } from '@/lib/ai/types';
 import { useQueryClient } from '@tanstack/react-query';
 import { useDocuments, useSaveDocument } from '@/hooks/chat-sync-hooks';
-import { CloneChatButton } from '@/components/clone-chat-button';
 import { useTRPC } from '@/trpc/react';
-import { chatStore } from '@/lib/stores/chat-store';
+//
 import type { ArtifactKind } from '@/lib/artifacts/artifact-kind';
 
 export const artifactDefinitions = [textArtifact, codeArtifact, sheetArtifact];
@@ -208,7 +208,7 @@ function PureArtifact({
       : true;
 
   const { width: windowWidth, height: windowHeight } = useWindowSize();
-  const isMobile = windowWidth ? windowWidth < 768 : false;
+  const isMobile = useIsMobile();
 
   const artifactDefinition = artifactDefinitions.find(
     (definition) => definition.kind === artifact.kind,
@@ -298,25 +298,15 @@ function PureArtifact({
                 )}
               </AnimatePresence>
 
-              <div className="flex flex-col h-full justify-between items-center @container">
-                <ArtifactMessages
+              <div className="flex flex-col h-full @container">
+                <MessagesPane
+                  chatId={chatId}
+                  status={status}
                   votes={votes}
                   isReadonly={isReadonly}
                   isVisible={true}
-                  artifactStatus={artifact.status}
+                  className="size-full"
                 />
-
-                {!isReadonly ? (
-                  <MultimodalInput
-                    chatId={chatId}
-                    status={status}
-                    className=""
-                    isEditMode={isReadonly}
-                    parentMessageId={chatStore.getState().getLastMessageId()}
-                  />
-                ) : (
-                  <CloneChatButton chatId={chatId} />
-                )}
               </div>
             </motion.div>
           )}
@@ -427,7 +417,7 @@ function PureArtifact({
               />
             </div>
 
-            <ScrollArea className="h-full !max-w-full">
+            <ScrollArea className="h-full max-w-full!">
               <div className="flex flex-col items-center bg-background/80">
                 <artifactDefinition.content
                   title={artifact.title}

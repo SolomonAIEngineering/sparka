@@ -48,10 +48,12 @@ import type { ModelId } from '@/lib/ai/model-id';
 import { calculateMessagesTokens } from '@/lib/ai/token-utils';
 import { ChatSDKError } from '@/lib/ai/errors';
 import { addExplicitToolRequestToMessages } from './addExplicitToolRequestToMessages';
+import { MAX_INPUT_TOKENS } from '@/lib/limits/tokens';
 import { getRecentGeneratedImage } from './getRecentGeneratedImage';
 import { getCreditReservation } from './getCreditReservation';
 import { filterReasoningParts } from './filterReasoningParts';
 import { getThreadUpToMessageId } from './getThreadUpToMessageId';
+import { createModuleLogger } from '@/lib/logger';
 
 // Create shared Redis clients for resumable stream and cleanup
 let redisPublisher: any = null;
@@ -104,6 +106,7 @@ export function getRedisPublisher() {
 }
 
 export async function POST(request: NextRequest) {
+  const log = createModuleLogger('api:chat');
   try {
     const {
       id: chatId,
@@ -116,7 +119,7 @@ export async function POST(request: NextRequest) {
     } = await request.json();
 
     if (!userMessage) {
-      console.log('RESPONSE > POST /api/chat: No user message found');
+      log.warn('No user message found');
       return new Response('No user message found', { status: 400 });
     }
 
@@ -124,9 +127,7 @@ export async function POST(request: NextRequest) {
     const selectedModelId = userMessage.metadata?.selectedModel as ModelId;
 
     if (!selectedModelId) {
-      console.log(
-        'RESPONSE > POST /api/chat: No selectedModel in user message metadata',
-      );
+      log.warn('No selectedModel in user message metadata');
       return new Response('No selectedModel in user message metadata', {
         status: 400,
       });
@@ -144,7 +145,7 @@ export async function POST(request: NextRequest) {
       // TODO: Consider if checking if user exists is really needed
       const user = await getUserById({ userId });
       if (!user) {
-        console.log('RESPONSE > POST /api/chat: User not found');
+        log.warn('User not found');
         return new Response('User not found', { status: 404 });
       }
     } else {
@@ -156,9 +157,7 @@ export async function POST(request: NextRequest) {
       );
 
       if (!rateLimitResult.success) {
-        console.log(
-          `RESPONSE > POST /api/chat: Rate limit exceeded for IP ${clientIP}`,
-        );
+        log.warn({ clientIP }, 'Rate limit exceeded');
         return new Response(
           JSON.stringify({
             error: rateLimitResult.error,
@@ -181,9 +180,7 @@ export async function POST(request: NextRequest) {
 
       // Check message limits
       if (anonymousSession.remainingCredits <= 0) {
-        console.log(
-          'RESPONSE > POST /api/chat: Anonymous message limit reached',
-        );
+        log.info('Anonymous message limit reached');
         return new Response(
           JSON.stringify({
             error: `You've used all ${ANONYMOUS_LIMITS.CREDITS} free messages. Sign up to continue chatting with unlimited access!`,
@@ -204,9 +201,7 @@ export async function POST(request: NextRequest) {
 
       // Validate model for anonymous users
       if (!ANONYMOUS_LIMITS.AVAILABLE_MODELS.includes(selectedModelId as any)) {
-        console.log(
-          'RESPONSE > POST /api/chat: Model not available for anonymous users',
-        );
+        log.warn('Model not available for anonymous users');
         return new Response(
           JSON.stringify({
             error: 'Model not available for anonymous users',
@@ -225,12 +220,12 @@ export async function POST(request: NextRequest) {
 
     // Extract selectedTool from user message metadata
     const selectedTool = userMessage.metadata.selectedTool || null;
-    console.log('RESPONSE > POST /api/chat: selectedTool', selectedTool);
+    log.debug({ selectedTool }, 'selectedTool');
     let modelDefinition: ModelDefinition;
     try {
       modelDefinition = getModelDefinition(selectedModelId);
     } catch (error) {
-      console.log('RESPONSE > POST /api/chat: Model not found');
+      log.warn('Model not found');
       return new Response('Model not found', { status: 404 });
     }
     // Skip database operations for anonymous users
@@ -238,9 +233,7 @@ export async function POST(request: NextRequest) {
       const chat = await getChatById({ id: chatId });
 
       if (chat && chat.userId !== userId) {
-        console.log(
-          'RESPONSE > POST /api/chat: Unauthorized - chat ownership mismatch',
-        );
+        log.warn('Unauthorized - chat ownership mismatch');
         return new Response('Unauthorized', { status: 401 });
       }
 
@@ -252,9 +245,7 @@ export async function POST(request: NextRequest) {
         await saveChat({ id: chatId, userId, title });
       } else {
         if (chat.userId !== userId) {
-          console.log(
-            'RESPONSE > POST /api/chat: Unauthorized - chat ownership mismatch',
-          );
+          log.warn('Unauthorized - chat ownership mismatch');
           return new Response('Unauthorized', { status: 401 });
         }
       }
@@ -262,9 +253,7 @@ export async function POST(request: NextRequest) {
       const [exsistentMessage] = await getMessageById({ id: userMessage.id });
 
       if (exsistentMessage && exsistentMessage.chatId !== chatId) {
-        console.log(
-          'RESPONSE > POST /api/chat: Unauthorized - message chatId mismatch',
-        );
+        log.warn('Unauthorized - message chatId mismatch');
         return new Response('Unauthorized', { status: 401 });
       }
 
@@ -355,9 +344,9 @@ export async function POST(request: NextRequest) {
         explicitlyRequestedTools.includes(tool),
       )
     ) {
-      console.log(
-        'RESPONSE > POST /api/chat: Insufficient budget for requested tool:',
-        explicitlyRequestedTools,
+      log.warn(
+        { explicitlyRequestedTools },
+        'Insufficient budget for requested tool',
       );
       return new Response(
         `Insufficient budget for requested tool: ${explicitlyRequestedTools}.`,
@@ -369,9 +358,9 @@ export async function POST(request: NextRequest) {
       explicitlyRequestedTools &&
       explicitlyRequestedTools.length > 0
     ) {
-      console.log(
+      log.debug(
+        { explicitlyRequestedTools },
         'Setting explicitly requested tools',
-        explicitlyRequestedTools,
       );
       activeTools = explicitlyRequestedTools;
     }
@@ -380,12 +369,9 @@ export async function POST(request: NextRequest) {
     const totalTokens = calculateMessagesTokens(
       convertToModelMessages([userMessage]),
     );
-    const MAX_INPUT_TOKENS = 50_000;
 
     if (totalTokens > MAX_INPUT_TOKENS) {
-      console.log(
-        `RESPONSE > POST /api/chat: Token limit exceeded: ${totalTokens} > ${MAX_INPUT_TOKENS}`,
-      );
+      log.warn({ totalTokens, MAX_INPUT_TOKENS }, 'Token limit exceeded');
       const error = new ChatSDKError(
         'input_too_long:chat',
         `Message too long: ${totalTokens} tokens (max: ${MAX_INPUT_TOKENS})`,
@@ -419,9 +405,8 @@ export async function POST(request: NextRequest) {
     // TODO: remove this when the gateway provider supports URLs
     const contextForLLM =
       await replaceFilePartUrlByBinaryDataInMessages(modelMessages);
-    console.dir(contextForLLM, { depth: null });
-    // Extract the last generated image for use as reference (only from the immediately previous message)
-    console.log('active tools', activeTools);
+    log.debug({ contextForLLM }, 'context prepared');
+    log.debug({ activeTools }, 'active tools');
 
     // Create AbortController with 55s timeout for credit cleanup
     const abortController = new AbortController();
@@ -515,7 +500,7 @@ export async function POST(request: NextRequest) {
               lastGeneratedImage,
             }),
             onError: (error) => {
-              console.error('streamText error', error);
+              log.error({ error }, 'streamText error');
             },
             abortSignal: abortController.signal, // Pass abort signal to streamText
             ...(modelDefinition.features?.fixedTemperature
@@ -615,7 +600,7 @@ export async function POST(request: NextRequest) {
                 await reservation.finalize(actualCost);
               }
             } catch (error) {
-              console.error('Failed to save chat or finalize credits:', error);
+              log.error({ error }, 'Failed to save chat or finalize credits');
               // Still release the reservation on error
               if (reservation) {
                 await reservation.cleanup();
@@ -627,7 +612,7 @@ export async function POST(request: NextRequest) {
         onError: (error) => {
           // Clear timeout on error
           clearTimeout(timeoutId);
-          console.error('onError', error);
+          log.error({ error }, 'onError');
           // Release reserved credits on error (fire and forget)
           if (reservation) {
             reservation.cleanup();
@@ -654,7 +639,7 @@ export async function POST(request: NextRequest) {
               );
             }
           } catch (error) {
-            console.error('Failed to set TTL on stream keys:', error);
+            log.error({ error }, 'Failed to set TTL on stream keys');
           }
         }
 
@@ -668,14 +653,14 @@ export async function POST(request: NextRequest) {
             await redisPublisher.expire(keyPrefix, 300);
           }
         } catch (cleanupError) {
-          console.error('Failed to cleanup stream record:', cleanupError);
+          log.error({ cleanupError }, 'Failed to cleanup stream record');
         }
       });
 
       const streamContext = getStreamContext();
 
       if (streamContext) {
-        console.log('RESPONSE > POST /api/chat: Returning resumable stream');
+        log.debug('Returning resumable stream');
         return new Response(
           await streamContext.resumableStream(streamId, () =>
             stream.pipeThrough(new JsonToSseTransformStream()),
@@ -686,7 +671,7 @@ export async function POST(request: NextRequest) {
       }
     } catch (error) {
       clearTimeout(timeoutId);
-      console.error('error found in try block', error);
+      log.error({ error }, 'error found in try block');
       if (reservation) {
         await reservation.cleanup();
       }
@@ -697,7 +682,7 @@ export async function POST(request: NextRequest) {
       throw error;
     }
   } catch (error) {
-    console.error('RESPONSE > POST /api/chat error:', error);
+    log.error({ error }, 'RESPONSE > POST /api/chat error');
     return new Response('An error occurred while processing your request!', {
       status: 404,
     });

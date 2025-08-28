@@ -13,7 +13,7 @@ import {
   type SetStateAction,
 } from 'react';
 import { toast } from 'sonner';
-import { useWindowSize } from 'usehooks-ts';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { useDropzone } from 'react-dropzone';
 import { motion } from 'motion/react';
 import { useSession } from 'next-auth/react';
@@ -24,22 +24,23 @@ import {
   useSendMessage,
 } from '@/lib/stores/chat-store';
 
-import { ArrowUpIcon, PaperclipIcon, StopIcon } from './icons';
 import { AttachmentList } from './attachment-list';
-import { Button } from './ui/button';
+import { PlusIcon } from 'lucide-react';
 import { ImageModal } from './image-modal';
+import { ChatInputTextArea } from './chat-input';
 import {
-  ChatInputContainer,
-  ChatInputTopRow,
-  ChatInputTextArea,
-  ChatInputBottomRow,
-} from './ui/chat-input';
+  PromptInput,
+  PromptInputToolbar,
+  PromptInputTools,
+  PromptInputContextBar,
+  PromptInputSubmit,
+  PromptInputButton,
+} from '@/components/ai-elements/prompt-input';
 import { SuggestedActions } from './suggested-actions';
 import type { UseChatHelpers } from '@ai-sdk/react';
 import { useChatInput } from '@/providers/chat-input-provider';
 import { ModelSelector } from './model-selector';
-import { ResponsiveTools } from './chat-tools';
-import { ScrollArea } from './ui/scroll-area';
+import { ResponsiveTools } from './responsive-tools';
 import {
   getModelDefinition,
   DEFAULT_PDF_MODEL,
@@ -47,6 +48,7 @@ import {
 } from '@/lib/ai/all-models';
 import { CreditLimitDisplay } from './upgrade-cta/credit-limit-display';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
+import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import { LoginPrompt } from './upgrade-cta/login-prompt';
 import { generateUUID } from '@/lib/utils';
 import { useSaveMessageMutation } from '@/hooks/chat-sync-hooks';
@@ -66,14 +68,13 @@ function PureMultimodalInput({
   parentMessageId: string | null;
   onSendMessage?: (message: ChatMessage) => void | Promise<void>;
 }) {
-  const { width } = useWindowSize();
   const { data: session } = useSession();
+  const isMobile = useIsMobile();
   const { mutate: saveChatMessage } = useSaveMessageMutation();
   const setMessages = useSetMessages();
   const messageIds = useMessageIds();
 
   // Detect mobile devices
-  const isMobile = width ? width <= 768 : false;
   const {
     editorRef,
     selectedTool,
@@ -240,13 +241,13 @@ function PureMultimodalInput({
     sendMessage(message);
 
     // Refocus after submit
-    if (width && width > 768) {
+    if (!isMobile) {
       editorRef.current?.focus();
     }
   }, [
     attachments,
     sendMessage,
-    width,
+    isMobile,
     chatId,
     selectedTool,
     isEditMode,
@@ -437,12 +438,16 @@ function PureMultimodalInput({
   });
 
   return (
-    <div className="relative flex flex-col w-full gap-4 mx-auto p-2 @[400px]:px-4 @[400px]:pb-4 @[400px]:md:pb-6 bg-background md:max-w-3xl">
+    <div className="relative">
       {messageIds.length === 0 &&
         attachments.length === 0 &&
         uploadQueue.length === 0 &&
         !isEditMode && (
-          <SuggestedActions chatId={chatId} selectedModelId={selectedModelId} />
+          <SuggestedActions
+            className="mb-4"
+            chatId={chatId}
+            selectedModelId={selectedModelId}
+          />
         )}
 
       {!isEditMode && <CreditLimitDisplay />}
@@ -458,16 +463,28 @@ function PureMultimodalInput({
       />
 
       <div className="relative">
-        <ChatInputContainer
-          className={`${className} transition-colors px-1.5 @container  @[400px]:px-3  ${
+        <PromptInput
+          className={`${className} relative transition-colors @container ${
             isDragActive ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/20' : ''
           }`}
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (status !== 'ready' && status !== 'error') {
+              toast.error('Please wait for the model to finish its response!');
+            } else if (uploadQueue.length > 0) {
+              toast.error('Please wait for files to finish uploading!');
+            } else if (isEmpty) {
+              toast.error('Please enter a message before sending!');
+            } else {
+              submitForm();
+            }
+          }}
           {...getRootProps()}
         >
           <input {...getInputProps()} />
 
           {isDragActive && (
-            <div className="absolute inset-0 flex items-center justify-center bg-blue-50/80 dark:bg-blue-950/40 border-2 border-dashed border-blue-500 rounded-2xl z-10">
+            <div className="absolute inset-0 flex items-center justify-center bg-blue-50/80 dark:bg-blue-950/40 border-2 border-dashed border-blue-500 rounded-xl z-10">
               <div className="text-blue-600 dark:text-blue-400 font-medium">
                 Drop images or PDFs here to attach
               </div>
@@ -483,8 +500,8 @@ function PureMultimodalInput({
             transition={{ duration: 0.3, ease: 'easeInOut' }}
             style={{ overflow: 'hidden' }}
           >
-            <ChatInputTopRow>
-              {(attachments.length > 0 || uploadQueue.length > 0) && (
+            {(attachments.length > 0 || uploadQueue.length > 0) && (
+              <PromptInputContextBar className="border-b">
                 <AttachmentList
                   attachments={attachments}
                   uploadQueue={uploadQueue}
@@ -493,49 +510,46 @@ function PureMultimodalInput({
                   testId="attachments-preview"
                   className="px-3 py-2"
                 />
-              )}
-            </ChatInputTopRow>
+              </PromptInputContextBar>
+            )}
           </motion.div>
 
-          <ScrollArea className="max-h-[50vh]">
-            <ChatInputTextArea
-              data-testid="multimodal-input"
-              ref={editorRef}
-              className="min-h-[80px]"
-              placeholder={
-                isMobile
-                  ? 'Send a message... (Ctrl+Enter to send)'
-                  : 'Send a message...'
-              }
-              initialValue={getInitialInput()}
-              onInputChange={handleInputChange}
-              autoFocus
-              onPaste={handlePaste}
-              onEnterSubmit={(event) => {
-                // Different key combinations for mobile vs desktop
-                const shouldSubmit = isMobile
-                  ? event.ctrlKey && !event.isComposing
-                  : !event.shiftKey && !event.isComposing;
+          <ChatInputTextArea
+            data-testid="multimodal-input"
+            ref={editorRef}
+            className="min-h-[80px] overflow-y-scroll max-h-[max(35svh,5rem)]"
+            placeholder={
+              isMobile
+                ? 'Send a message... (Ctrl+Enter to send)'
+                : 'Send a message...'
+            }
+            initialValue={getInitialInput()}
+            onInputChange={handleInputChange}
+            autoFocus
+            onPaste={handlePaste}
+            onEnterSubmit={(event) => {
+              const shouldSubmit = isMobile
+                ? event.ctrlKey && !event.isComposing
+                : !event.shiftKey && !event.isComposing;
 
-                if (shouldSubmit) {
-                  if (status !== 'ready' && status !== 'error') {
-                    toast.error(
-                      'Please wait for the model to finish its response!',
-                    );
-                  } else if (uploadQueue.length > 0) {
-                    toast.error('Please wait for files to finish uploading!');
-                  } else if (isEmpty) {
-                    toast.error('Please enter a message before sending!');
-                  } else {
-                    submitForm();
-                  }
-                  return true; // Prevent default Enter behavior
+              if (shouldSubmit) {
+                if (status !== 'ready' && status !== 'error') {
+                  toast.error(
+                    'Please wait for the model to finish its response!',
+                  );
+                } else if (uploadQueue.length > 0) {
+                  toast.error('Please wait for files to finish uploading!');
+                } else if (isEmpty) {
+                  toast.error('Please enter a message before sending!');
+                } else {
+                  submitForm();
                 }
+                return true;
+              }
 
-                return false; // Allow default behavior (e.g., Shift+Enter for new line)
-              }}
-            />
-          </ScrollArea>
+              return false;
+            }}
+          />
 
           <ChatInputBottomControls
             selectedModelId={selectedModelId}
@@ -548,7 +562,7 @@ function PureMultimodalInput({
             submitForm={submitForm}
             uploadQueue={uploadQueue}
           />
-        </ChatInputContainer>
+        </PromptInput>
       </div>
 
       <ImageModal
@@ -583,17 +597,22 @@ function PureAttachmentsButton({
 
   return (
     <Popover open={showLoginPopover} onOpenChange={setShowLoginPopover}>
-      <PopoverTrigger asChild>
-        <Button
-          data-testid="attachments-button"
-          className="p-1.5 h-fit dark:border-zinc-700 hover:dark:bg-zinc-900 hover:bg-zinc-200"
-          onClick={handleClick}
-          disabled={status !== 'ready'}
-          variant="ghost"
-        >
-          <PaperclipIcon size={14} />
-        </Button>
-      </PopoverTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <PopoverTrigger asChild>
+            <PromptInputButton
+              data-testid="attachments-button"
+              className="size-8 @[400px]:size-10"
+              onClick={handleClick}
+              disabled={status !== 'ready'}
+              variant="ghost"
+            >
+              <PlusIcon className="size-4" />
+            </PromptInputButton>
+          </PopoverTrigger>
+        </TooltipTrigger>
+        <TooltipContent>Add Files</TooltipContent>
+      </Tooltip>
       <PopoverContent className="w-80 p-0" align="end">
         <LoginPrompt
           title="Sign in to attach files"
@@ -606,54 +625,7 @@ function PureAttachmentsButton({
 
 const AttachmentsButton = memo(PureAttachmentsButton);
 
-function PureStopButton() {
-  return (
-    <Button
-      data-testid="stop-button"
-      className="rounded-full p-1.5 h-fit border dark:border-zinc-600"
-      onClick={(event) => {
-        event.preventDefault();
-        void chatStore.getState().currentChatHelpers?.stop?.();
-      }}
-    >
-      <StopIcon size={14} />
-    </Button>
-  );
-}
-
-const StopButton = memo(PureStopButton);
-
-function PureSendButton({
-  submitForm,
-  isEmpty,
-  uploadQueue,
-}: {
-  submitForm: () => void;
-  isEmpty: boolean;
-  uploadQueue: Array<string>;
-}) {
-  return (
-    <Button
-      data-testid="send-button"
-      className="rounded-full p-1.5 h-fit border dark:border-zinc-600"
-      onClick={(event) => {
-        event.preventDefault();
-        submitForm();
-      }}
-      disabled={isEmpty || uploadQueue.length > 0}
-    >
-      <ArrowUpIcon size={14} />
-    </Button>
-  );
-}
-
-const SendButton = memo(PureSendButton, (prevProps, nextProps) => {
-  if (prevProps.uploadQueue.length !== nextProps.uploadQueue.length)
-    return false;
-  if (prevProps.isEmpty !== nextProps.isEmpty) return false;
-  if (prevProps.submitForm !== nextProps.submitForm) return false;
-  return true;
-});
+// Removed standalone StopButton; stop is now handled by PromptInputSubmit
 
 function PureChatInputBottomControls({
   selectedModelId,
@@ -677,11 +649,12 @@ function PureChatInputBottomControls({
   uploadQueue: Array<string>;
 }) {
   return (
-    <ChatInputBottomRow className="flex flex-row justify-between min-w-0 w-full">
-      <div className="flex items-center gap-1 @[400px]:gap-2 min-w-0 flex-0">
+    <PromptInputToolbar className="flex flex-row justify-between min-w-0 w-full gap-1 @[400px]:gap-2 border-t">
+      <PromptInputTools className="flex items-center gap-1 @[400px]:gap-2 min-w-0">
+        <AttachmentsButton fileInputRef={fileInputRef} status={status} />
         <ModelSelector
           selectedModelId={selectedModelId}
-          className="h-fit text-xs @[400px]:text-sm min-w-0 shrink max-w-none px-2 @[400px]:px-3 py-1 @[400px]:py-1.5 truncate flex-1"
+          className="text-xs @[400px]:text-sm w-fit shrink max-w-none px-2 @[400px]:px-3 truncate justify-start h-8 @[400px]:h-10"
           onModelChange={onModelChange}
         />
         <ResponsiveTools
@@ -689,20 +662,21 @@ function PureChatInputBottomControls({
           setTools={setSelectedTool}
           selectedModelId={selectedModelId}
         />
-      </div>
-      <div className="flex gap-2">
-        <AttachmentsButton fileInputRef={fileInputRef} status={status} />
-        {status !== 'ready' ? (
-          <StopButton />
-        ) : (
-          <SendButton
-            isEmpty={isEmpty}
-            submitForm={submitForm}
-            uploadQueue={uploadQueue}
-          />
-        )}
-      </div>
-    </ChatInputBottomRow>
+      </PromptInputTools>
+      <PromptInputSubmit
+        className={'shrink-0 size-8 @[400px]:size-10'}
+        status={status}
+        disabled={status === 'ready' && (isEmpty || uploadQueue.length > 0)}
+        onClick={(e) => {
+          e.preventDefault();
+          if (status === 'streaming' || status === 'submitted') {
+            void chatStore.getState().currentChatHelpers?.stop?.();
+          } else if (status === 'ready' || status === 'error') {
+            submitForm();
+          }
+        }}
+      />
+    </PromptInputToolbar>
   );
 }
 
