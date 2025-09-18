@@ -13,8 +13,8 @@ import {
   getAttachmentsFromMessage,
   getTextContentFromMessage,
 } from '@/lib/utils';
-import type { ModelId } from '@/lib/ai/model-id';
-import { useChatStatus } from '@/lib/stores/chat-store';
+import type { ModelId } from '@/lib/models/model-id';
+import { useChatStatus } from '@/lib/stores/chat-store-context';
 
 export type MessageEditorProps = {
   chatId: string;

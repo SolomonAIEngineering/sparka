@@ -9,13 +9,18 @@ import type { tavilyWebSearch } from '@/lib/ai/tools/web-search';
 import type { stockChart } from '@/lib/ai/tools/stock-chart';
 import type { codeInterpreter } from '@/lib/ai/tools/code-interpreter';
 import type { retrieve } from '@/lib/ai/tools/retrieve';
-import type { InferUITool, UIMessage, UIMessageStreamWriter } from 'ai';
+import type {
+  InferUITool,
+  UIMessage,
+  UIMessageStreamWriter,
+  LanguageModelUsage,
+} from 'ai';
 
 import type { ArtifactKind } from '../artifacts/artifact-kind';
 import type { Suggestion } from '@/lib/db/schema';
 import type { ResearchUpdate } from './tools/research-updates-schema';
 import type { createDocumentTool as createDocument } from './tools/create-document';
-import type { ModelId } from './model-id';
+import type { ModelId } from '../models/model-id';
 
 export const toolNameSchema = z.enum([
   'getWeather',
@@ -51,6 +56,7 @@ export const messageMetadataSchema = z.object({
   selectedModel: z.custom<ModelId>((val) => typeof val === 'string'),
   isPartial: z.boolean().optional(),
   selectedTool: frontendToolsSchema.optional(),
+  usage: z.custom<LanguageModelUsage | undefined>((val) => true).optional(),
 });
 
 export type MessageMetadata = z.infer<typeof messageMetadataSchema>;

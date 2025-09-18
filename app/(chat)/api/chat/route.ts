@@ -44,7 +44,7 @@ import type { AnonymousSession } from '@/lib/types/anonymous';
 import { ANONYMOUS_LIMITS } from '@/lib/types/anonymous';
 import { markdownJoinerTransform } from '@/lib/ai/markdown-joiner-transform';
 import { checkAnonymousRateLimit, getClientIP } from '@/lib/utils/rate-limit';
-import type { ModelId } from '@/lib/ai/model-id';
+import type { ModelId } from '@/lib/models/model-id';
 import { calculateMessagesTokens } from '@/lib/ai/token-utils';
 import { ChatSDKError } from '@/lib/ai/errors';
 import { addExplicitToolRequestToMessages } from './addExplicitToolRequestToMessages';
@@ -264,6 +264,7 @@ export async function POST(request: NextRequest) {
             id: userMessage.id,
             chatId: chatId,
             role: userMessage.role,
+            lastContext: undefined,
             parts: userMessage.parts,
             attachments: [],
             createdAt: new Date(),
@@ -405,7 +406,6 @@ export async function POST(request: NextRequest) {
     // TODO: remove this when the gateway provider supports URLs
     const contextForLLM =
       await replaceFilePartUrlByBinaryDataInMessages(modelMessages);
-    log.debug({ contextForLLM }, 'context prepared');
     log.debug({ activeTools }, 'active tools');
 
     // Create AbortController with 55s timeout for credit cleanup
@@ -442,6 +442,7 @@ export async function POST(request: NextRequest) {
             id: messageId,
             chatId: chatId,
             role: 'assistant',
+            lastContext: undefined,
             parts: [], // Empty placeholder
             attachments: [],
             createdAt: new Date(),
@@ -535,6 +536,7 @@ export async function POST(request: NextRequest) {
                   return {
                     ...initialMetadata,
                     isPartial: false,
+                    usage: part.totalUsage,
                   };
                 }
               },
@@ -583,7 +585,7 @@ export async function POST(request: NextRequest) {
                     chatId: chatId,
                     role: assistantMessage.role ?? '',
                     parts: assistantMessage.parts ?? [],
-
+                    lastContext: responseMessage.metadata.usage,
                     attachments: [],
                     createdAt: new Date(),
                     annotations: [],

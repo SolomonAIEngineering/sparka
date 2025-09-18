@@ -1,7 +1,7 @@
 import type { UIChat } from '@/lib/types/uiChat';
 import type { DBMessage, Chat } from '@/lib/db/schema';
 import type { ChatMessage, UiToolName } from './ai/types';
-import type { ModelId } from './ai/model-id';
+import type { ModelId } from './models/model-id';
 
 // Helper functions for type conversion
 export function dbChatToUIChat(chat: Chat): UIChat {
@@ -45,6 +45,7 @@ export function chatMessageToDbMessage(
     role: message.role,
     parts: message.parts,
     attachments: [],
+    lastContext: message.metadata?.usage || null,
     createdAt: message.metadata?.createdAt || new Date(),
     annotations: [],
     isPartial: isPartial,

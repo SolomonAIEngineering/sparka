@@ -19,6 +19,15 @@ export const authConfig = {
         return true;
       }
 
+      // Allow public Next.js metadata file routes
+      const isMetadataRoute =
+        nextUrl.pathname === '/sitemap.xml' ||
+        nextUrl.pathname === '/robots.txt' ||
+        nextUrl.pathname === '/manifest.webmanifest';
+      if (isMetadataRoute) {
+        return true;
+      }
+
       // Allow tRPC API routes for public shared documents
       const isTrpcApi = nextUrl.pathname.startsWith('/api/trpc');
       if (isTrpcApi) {
@@ -32,6 +41,8 @@ export const authConfig = {
       }
 
       const isOnChat = nextUrl.pathname.startsWith('/');
+      const isOnModels = nextUrl.pathname.startsWith('/models');
+      const isOnCompare = nextUrl.pathname.startsWith('/compare');
       const isOnLoginPage = nextUrl.pathname.startsWith('/login');
       const isOnRegisterPage = nextUrl.pathname.startsWith('/register');
       const isOnSharePage = nextUrl.pathname.startsWith('/share/');
@@ -46,6 +57,11 @@ export const authConfig = {
 
       // Allow anonymous access to shared chat pages
       if (isOnSharePage) {
+        return true;
+      }
+
+      // Public routes: models, compare
+      if (isOnModels || isOnCompare) {
         return true;
       }
 

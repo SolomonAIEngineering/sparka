@@ -32,7 +32,8 @@ import type { ArtifactToolbarItem } from './create-artifact';
 import type { UseChatHelpers } from '@ai-sdk/react';
 import { useChatInput } from '@/providers/chat-input-provider';
 import type { ChatMessage } from '@/lib/ai/types';
-import { chatStore, useSendMessage } from '@/lib/stores/chat-store';
+import { useSendMessage } from '@/lib/stores/chat-store-context';
+import type { useChatStoreApi } from '@/lib/stores/chat-store-context';
 
 type ToolProps = {
   description: string;
@@ -44,12 +45,15 @@ type ToolProps = {
   isAnimating: boolean;
   onClick: ({
     sendMessage,
+    storeApi,
   }: {
     sendMessage: UseChatHelpers<ChatMessage>['sendMessage'];
+    storeApi: ReturnType<typeof useChatStoreApi>;
   }) => void;
+  storeApi: ReturnType<typeof useChatStoreApi>;
 };
 
-const Tool = ({
+function Tool({
   description,
   icon,
   selectedTool,
@@ -58,7 +62,8 @@ const Tool = ({
   setIsToolbarVisible,
   isAnimating,
   onClick,
-}: ToolProps) => {
+  storeApi,
+}: ToolProps) {
   const sendMessage = useSendMessage();
   const [isHovered, setIsHovered] = useState(false);
 
@@ -84,7 +89,7 @@ const Tool = ({
       setSelectedTool(description);
     } else {
       setSelectedTool(null);
-      if (sendMessage) onClick({ sendMessage });
+      if (sendMessage) onClick({ sendMessage, storeApi });
     }
   };
 
@@ -131,17 +136,19 @@ const Tool = ({
       </TooltipContent>
     </Tooltip>
   );
-};
+}
 
 const randomArr = [...Array(6)].map((x) => nanoid(5));
 
-const ReadingLevelSelector = ({
+function ReadingLevelSelector({
   setSelectedTool,
   isAnimating,
+  storeApi,
 }: {
   setSelectedTool: Dispatch<SetStateAction<string | null>>;
   isAnimating: boolean;
-}) => {
+  storeApi: ReturnType<typeof useChatStoreApi>;
+}) {
   const sendMessage = useSendMessage();
   const LEVELS = [
     'Elementary',
@@ -227,7 +234,7 @@ const ReadingLevelSelector = ({
                   metadata: {
                     selectedModel: selectedModelId,
                     createdAt: new Date(),
-                    parentMessageId: chatStore.getState().getLastMessageId(),
+                    parentMessageId: storeApi.getState().getLastMessageId(),
                   },
                 });
 
@@ -248,15 +255,16 @@ const ReadingLevelSelector = ({
       </Tooltip>
     </div>
   );
-};
+}
 
-export const Tools = ({
+export function Tools({
   isToolbarVisible,
   selectedTool,
   setSelectedTool,
   isAnimating,
   setIsToolbarVisible,
   tools,
+  storeApi,
 }: {
   isToolbarVisible: boolean;
   selectedTool: string | null;
@@ -264,7 +272,8 @@ export const Tools = ({
   isAnimating: boolean;
   setIsToolbarVisible: Dispatch<SetStateAction<boolean>>;
   tools: Array<ArtifactToolbarItem>;
-}) => {
+  storeApi: ReturnType<typeof useChatStoreApi>;
+}) {
   const [primaryTool, ...secondaryTools] = tools;
 
   return (
@@ -285,6 +294,7 @@ export const Tools = ({
               setSelectedTool={setSelectedTool}
               isAnimating={isAnimating}
               onClick={secondaryTool.onClick}
+              storeApi={storeApi}
             />
           ))}
       </AnimatePresence>
@@ -298,24 +308,27 @@ export const Tools = ({
         setIsToolbarVisible={setIsToolbarVisible}
         isAnimating={isAnimating}
         onClick={primaryTool.onClick}
+        storeApi={storeApi}
       />
     </motion.div>
   );
-};
+}
 
-const PureToolbar = ({
+function PureToolbar({
   isToolbarVisible,
   setIsToolbarVisible,
   status,
   stop,
   artifactKind,
+  storeApi,
 }: {
   isToolbarVisible: boolean;
   setIsToolbarVisible: Dispatch<SetStateAction<boolean>>;
   status: UseChatHelpers<ChatMessage>['status'];
   stop: UseChatHelpers<ChatMessage>['stop'];
   artifactKind: ArtifactKind;
-}) => {
+  storeApi: ReturnType<typeof useChatStoreApi>;
+}) {
   const toolbarRef = useRef<HTMLDivElement>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout>>();
 
@@ -428,7 +441,6 @@ const PureToolbar = ({
             className="p-3"
             onClick={() => {
               stop();
-              // No need to call setMessages here as we're just stopping
             }}
           >
             <StopIcon />
@@ -438,6 +450,7 @@ const PureToolbar = ({
             key="reading-level-selector"
             setSelectedTool={setSelectedTool}
             isAnimating={isAnimating}
+            storeApi={storeApi}
           />
         ) : (
           <Tools
@@ -448,12 +461,13 @@ const PureToolbar = ({
             setIsToolbarVisible={setIsToolbarVisible}
             setSelectedTool={setSelectedTool}
             tools={toolsByArtifactKind}
+            storeApi={storeApi}
           />
         )}
       </motion.div>
     </TooltipProvider>
   );
-};
+}
 
 export const Toolbar = memo(PureToolbar, (prevProps, nextProps) => {
   if (prevProps.status !== nextProps.status) return false;

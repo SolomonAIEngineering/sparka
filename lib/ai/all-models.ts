@@ -1,22 +1,18 @@
-import type { ModelData } from '@/providers/models-generated';
-import { modelsData } from '@/providers/models-generated';
+import type { ModelData } from '@/lib/models/models.generated';
+import { modelsData } from '@/lib/models/models.generated';
 import {
   imageModelsFeatures,
   modelFeatures,
   type ModelFeatures,
-} from './model-features';
-import type { ImageModelId, ModelId } from './model-id';
-import { imageModelsData, type ImageModelData } from '@/providers/image-models';
-
-const disabledModels: Partial<Record<ModelId, true>> = {
-  'anthropic/claude-opus-4': true,
-  'anthropic/claude-opus-4.1': true,
-  'morph/morph-v3-large': true,
-  'morph/morph-v3-fast': true,
-};
+} from '../models/model-features';
+import type { ImageModelId, ModelId } from '../models/model-id';
+import {
+  imageModelsData,
+  type ImageModelData,
+} from '@/lib/models/image-models';
 
 export type ModelDefinition = ModelData & {
-  features?: ModelFeatures;
+  features: ModelFeatures;
   disabled?: true;
 };
 
@@ -24,17 +20,29 @@ export type ImageModelDefinition = ImageModelData & {
   features?: ModelFeatures;
 };
 
+const DISABLED_MODELS: Partial<Record<ModelId, true>> = {
+  // 'anthropic/claude-opus-4': true,
+  // 'anthropic/claude-opus-4.1': true,
+  'cohere/command-r': true,
+  'cohere/command-r-plus': true,
+  'morph/morph-v3-large': true,
+  'morph/morph-v3-fast': true,
+};
+
 export const allModels = modelsData
   .map((model) => {
     const features = modelFeatures[model.id];
-    const disabled = disabledModels[model.id];
+    if (!features) {
+      console.error('No features for', model.id);
+    }
+
     return {
       ...model,
       features,
-      disabled,
+      disabled: DISABLED_MODELS[model.id],
     };
   })
-  .filter((model) => !model.disabled && model.type === 'language');
+  .filter((model) => model.type === 'language' && !model.disabled);
 
 const allImageModels = imageModelsData.map((model) => {
   const features = imageModelsFeatures[model.id];
@@ -48,9 +56,7 @@ const PROVIDER_ORDER = ['openai', 'google', 'anthropic', 'xai'];
 
 export const chatModels = allModels
   .filter(
-    (model) =>
-      !model.disabled &&
-      (model.features?.output?.text === true || !model.features), // Let's show models even if we haven't created features yet
+    (model) => model.features?.output?.text === true, // Let's show models even if we haven't created features yet
   )
   .sort((a, b) => {
     const aProviderIndex = PROVIDER_ORDER.indexOf(a.owned_by);
@@ -114,7 +120,7 @@ export function getImageModelDefinition(
   return model;
 }
 
-export const DEFAULT_CHAT_MODEL: ModelId = 'openai/gpt-5-mini';
+export const DEFAULT_CHAT_MODEL: ModelId = 'cohere/command-a';
 export const DEFAULT_PDF_MODEL: ModelId = 'openai/gpt-5-mini';
 export const DEFAULT_TITLE_MODEL: ModelId = 'openai/gpt-5-nano';
 export const DEFAULT_ARTIFACT_MODEL: ModelId = 'openai/gpt-5-nano';

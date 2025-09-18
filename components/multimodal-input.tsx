@@ -1,6 +1,5 @@
 'use client';
 import type { Attachment, ChatMessage, UiToolName } from '@/lib/ai/types';
-import type { ModelId } from '@/lib/ai/model-id';
 
 import type React from 'react';
 import {
@@ -15,16 +14,13 @@ import {
 import { toast } from 'sonner';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useDropzone } from 'react-dropzone';
-import { motion } from 'motion/react';
 import { useSession } from 'next-auth/react';
 import {
-  chatStore,
+  useChatHelperStop,
   useSetMessages,
+  useChatStoreApi,
   useMessageIds,
-  useSendMessage,
-} from '@/lib/stores/chat-store';
-
-import { AttachmentList } from './attachment-list';
+} from '@/lib/stores/chat-store-context';
 import { PlusIcon } from 'lucide-react';
 import { ImageModal } from './image-modal';
 import { ChatInputTextArea } from './chat-input';
@@ -32,7 +28,6 @@ import {
   PromptInput,
   PromptInputToolbar,
   PromptInputTools,
-  PromptInputContextBar,
   PromptInputSubmit,
   PromptInputButton,
 } from '@/components/ai-elements/prompt-input';
@@ -45,13 +40,26 @@ import {
   getModelDefinition,
   DEFAULT_PDF_MODEL,
   DEFAULT_CHAT_IMAGE_COMPATIBLE_MODEL,
+  DEFAULT_CHAT_MODEL,
 } from '@/lib/ai/all-models';
-import { CreditLimitDisplay } from './upgrade-cta/credit-limit-display';
+import { LimitDisplay } from './upgrade-cta/limit-display';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import { LoginPrompt } from './upgrade-cta/login-prompt';
 import { generateUUID } from '@/lib/utils';
 import { useSaveMessageMutation } from '@/hooks/chat-sync-hooks';
+import { ANONYMOUS_LIMITS } from '@/lib/types/anonymous';
+import { processFilesForUpload } from '@/lib/files/upload-prep';
+import type { ModelId } from '@/lib/models/model-id';
+import { ContextBar } from '@/components/context-bar';
+
+const IMAGE_UPLOAD_LIMITS = {
+  maxBytes: 1024 * 1024,
+  maxDimension: 2048,
+};
+const IMAGE_UPLOAD_MAX_MB = Math.round(
+  IMAGE_UPLOAD_LIMITS.maxBytes / (1024 * 1024),
+);
 
 function PureMultimodalInput({
   chatId,
@@ -68,13 +76,13 @@ function PureMultimodalInput({
   parentMessageId: string | null;
   onSendMessage?: (message: ChatMessage) => void | Promise<void>;
 }) {
+  const storeApi = useChatStoreApi();
   const { data: session } = useSession();
   const isMobile = useIsMobile();
   const { mutate: saveChatMessage } = useSaveMessageMutation();
   const setMessages = useSetMessages();
   const messageIds = useMessageIds();
 
-  // Detect mobile devices
   const {
     editorRef,
     selectedTool,
@@ -90,7 +98,10 @@ function PureMultimodalInput({
     handleSubmit,
   } = useChatInput();
 
-  const sendMessage = useSendMessage();
+  const isAnonymous = !session?.user;
+  const isModelDisallowedForAnonymous =
+    isAnonymous &&
+    !ANONYMOUS_LIMITS.AVAILABLE_MODELS.includes(selectedModelId as any);
 
   // Helper function to auto-switch to PDF-compatible model
   const switchToPdfCompatibleModel = useCallback(() => {
@@ -122,35 +133,57 @@ function PureMultimodalInput({
     imageName: undefined,
   });
 
+  // Centralized submission gating
+
+  let selectedModelDef = null;
+  try {
+    selectedModelDef = getModelDefinition(selectedModelId);
+  } catch {
+    selectedModelDef = getModelDefinition(DEFAULT_CHAT_MODEL);
+  }
+  const isImageOutputModel = Boolean(selectedModelDef?.features?.output?.image);
+  const submission: { enabled: false; message: string } | { enabled: true } =
+    (() => {
+      if (isImageOutputModel) {
+        return {
+          enabled: false,
+          message: 'Image models are not supported yet',
+        };
+      }
+      if (isModelDisallowedForAnonymous) {
+        return { enabled: false, message: 'Log in to use this model' };
+      }
+      if (status !== 'ready' && status !== 'error') {
+        return {
+          enabled: false,
+          message: 'Please wait for the model to finish its response!',
+        };
+      }
+      if (uploadQueue.length > 0) {
+        return {
+          enabled: false,
+          message: 'Please wait for files to finish uploading!',
+        };
+      }
+      if (isEmpty) {
+        return {
+          enabled: false,
+          message: 'Please enter a message before sending!',
+        };
+      }
+      return { enabled: true };
+    })();
+
   // Helper function to process and validate files
   const processFiles = useCallback(
-    (files: File[]) => {
-      const imageFiles: File[] = [];
-      const pdfFiles: File[] = [];
-      const oversizedFiles: File[] = [];
-      const unsupportedFiles: File[] = [];
-      const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+    async (files: File[]): Promise<File[]> => {
+      const { processedImages, pdfFiles, stillOversized, unsupportedFiles } =
+        await processFilesForUpload(files, IMAGE_UPLOAD_LIMITS);
 
-      files.forEach((file) => {
-        // Check file size first
-        if (file.size > MAX_FILE_SIZE) {
-          oversizedFiles.push(file);
-          return;
-        }
-
-        // Then check file type
-        if (file.type.startsWith('image/')) {
-          imageFiles.push(file);
-        } else if (file.type === 'application/pdf') {
-          pdfFiles.push(file);
-        } else {
-          unsupportedFiles.push(file);
-        }
-      });
-
-      // Show error messages for invalid files
-      if (oversizedFiles.length > 0) {
-        toast.error(`${oversizedFiles.length} file(s) exceed 5MB limit`);
+      if (stillOversized.length > 0) {
+        toast.error(
+          `${stillOversized.length} file(s) exceed ${IMAGE_UPLOAD_MAX_MB}MB after compression`,
+        );
       }
       if (unsupportedFiles.length > 0) {
         toast.error(
@@ -159,27 +192,28 @@ function PureMultimodalInput({
       }
 
       // Auto-switch model based on file types
-      if (pdfFiles.length > 0 || imageFiles.length > 0) {
+      if (pdfFiles.length > 0 || processedImages.length > 0) {
         let currentModelDef = getModelDefinition(selectedModelId);
 
-        // First check PDF support if PDFs are present
         if (pdfFiles.length > 0 && !currentModelDef.features?.input?.pdf) {
           currentModelDef = switchToPdfCompatibleModel();
         }
-
-        // Then check image support if images are present (using potentially updated model)
-        if (imageFiles.length > 0 && !currentModelDef.features?.input?.image) {
+        if (
+          processedImages.length > 0 &&
+          !currentModelDef.features?.input?.image
+        ) {
           currentModelDef = switchToImageCompatibleModel();
         }
       }
 
-      return [...imageFiles, ...pdfFiles];
+      return [...processedImages, ...pdfFiles];
     },
     [selectedModelId, switchToPdfCompatibleModel, switchToImageCompatibleModel],
   );
 
   const coreSubmitLogic = useCallback(() => {
     const input = getInputValue();
+    const sendMessage = storeApi.getState().currentChatHelpers?.sendMessage;
     if (!sendMessage) return;
 
     // For new chats, we need to update the url to include the chatId
@@ -190,7 +224,7 @@ function PureMultimodalInput({
     // Get the appropriate parent message ID
     const effectiveParentMessageId = isEditMode
       ? parentMessageId
-      : chatStore.getState().getLastMessageId();
+      : storeApi.getState().getLastMessageId();
 
     // In edit mode, trim messages to the parent message
     if (isEditMode) {
@@ -199,13 +233,16 @@ function PureMultimodalInput({
         setMessages([]);
       } else {
         // Find the parent message and trim to that point
-        const currentMessages = chatStore.getState().messages;
-        const parentIndex = currentMessages.findIndex(
-          (msg) => msg.id === parentMessageId,
-        );
+        const parentIndex = storeApi
+          .getState()
+          .getThrottledMessages()
+          .findIndex((msg: ChatMessage) => msg.id === parentMessageId);
         if (parentIndex !== -1) {
           // Keep messages up to and including the parent
-          const messagesUpToParent = currentMessages.slice(0, parentIndex + 1);
+          const messagesUpToParent = storeApi
+            .getState()
+            .getThrottledMessages()
+            .slice(0, parentIndex + 1);
           setMessages(messagesUpToParent);
         }
       }
@@ -246,7 +283,6 @@ function PureMultimodalInput({
     }
   }, [
     attachments,
-    sendMessage,
     isMobile,
     chatId,
     selectedTool,
@@ -258,43 +294,52 @@ function PureMultimodalInput({
     setMessages,
     editorRef,
     onSendMessage,
+    storeApi,
   ]);
 
   const submitForm = useCallback(() => {
     handleSubmit(coreSubmitLogic, isEditMode);
   }, [handleSubmit, coreSubmitLogic, isEditMode]);
 
-  const uploadFile = useCallback(async (file: File) => {
-    const formData = new FormData();
-    formData.append('file', file);
+  const uploadFile = useCallback(
+    async (
+      file: File,
+    ): Promise<
+      { url: string; name: string; contentType: string } | undefined
+    > => {
+      const formData = new FormData();
+      formData.append('file', file);
 
-    try {
-      const response = await fetch('/api/files/upload', {
-        method: 'POST',
-        body: formData,
-      });
+      try {
+        const response = await fetch('/api/files/upload', {
+          method: 'POST',
+          body: formData,
+        });
 
-      if (response.ok) {
-        const data = await response.json();
-        const { url, pathname, contentType } = data;
+        if (response.ok) {
+          const data: { url: string; pathname: string; contentType: string } =
+            await response.json();
+          const { url, pathname, contentType } = data;
 
-        return {
-          url,
-          name: pathname,
-          contentType: contentType,
-        };
+          return {
+            url,
+            name: pathname,
+            contentType: contentType,
+          };
+        }
+        const { error } = (await response.json()) as { error?: string };
+        toast.error(error);
+      } catch (error) {
+        toast.error('Failed to upload file, please try again!');
       }
-      const { error } = await response.json();
-      toast.error(error);
-    } catch (error) {
-      toast.error('Failed to upload file, please try again!');
-    }
-  }, []);
+    },
+    [],
+  );
 
   const handleFileChange = useCallback(
     async (event: ChangeEvent<HTMLInputElement>) => {
       const files = Array.from(event.target.files || []);
-      const validFiles = processFiles(files);
+      const validFiles = await processFiles(files);
 
       if (validFiles.length === 0) return;
 
@@ -338,7 +383,7 @@ function PureMultimodalInput({
         return;
       }
 
-      const validFiles = processFiles(files);
+      const validFiles = await processFiles(files);
       if (validFiles.length === 0) return;
 
       setUploadQueue(validFiles.map((file) => file.name));
@@ -407,7 +452,7 @@ function PureMultimodalInput({
         return;
       }
 
-      const validFiles = processFiles(acceptedFiles);
+      const validFiles = await processFiles(acceptedFiles);
       if (validFiles.length === 0) return;
 
       setUploadQueue(validFiles.map((file) => file.name));
@@ -432,7 +477,7 @@ function PureMultimodalInput({
     noClick: true, // Prevent click to open file dialog since we have the button
     disabled: status !== 'ready',
     accept: {
-      'image/*': ['.png', '.jpg', '.jpeg', '.gif'],
+      'image/*': ['.png', '.jpg', '.jpeg'],
       'application/pdf': ['.pdf'],
     },
   });
@@ -449,8 +494,6 @@ function PureMultimodalInput({
             selectedModelId={selectedModelId}
           />
         )}
-
-      {!isEditMode && <CreditLimitDisplay />}
 
       <input
         type="file"
@@ -469,15 +512,11 @@ function PureMultimodalInput({
           }`}
           onSubmit={(e) => {
             e.preventDefault();
-            if (status !== 'ready' && status !== 'error') {
-              toast.error('Please wait for the model to finish its response!');
-            } else if (uploadQueue.length > 0) {
-              toast.error('Please wait for files to finish uploading!');
-            } else if (isEmpty) {
-              toast.error('Please enter a message before sending!');
-            } else {
-              submitForm();
+            if (!submission.enabled) {
+              if (submission.message) toast.error(submission.message);
+              return;
             }
+            submitForm();
           }}
           {...getRootProps()}
         >
@@ -491,28 +530,28 @@ function PureMultimodalInput({
             </div>
           )}
 
-          <motion.div
-            animate={{
-              height:
-                attachments.length > 0 || uploadQueue.length > 0 ? 'auto' : 0,
-              opacity: attachments.length > 0 || uploadQueue.length > 0 ? 1 : 0,
-            }}
-            transition={{ duration: 0.3, ease: 'easeInOut' }}
-            style={{ overflow: 'hidden' }}
-          >
-            {(attachments.length > 0 || uploadQueue.length > 0) && (
-              <PromptInputContextBar className="border-b">
-                <AttachmentList
-                  attachments={attachments}
-                  uploadQueue={uploadQueue}
-                  onRemove={removeAttachment}
-                  onImageClick={handleImageClick}
-                  testId="attachments-preview"
-                  className="px-3 py-2"
-                />
-              </PromptInputContextBar>
-            )}
-          </motion.div>
+          {!isEditMode && (
+            <LimitDisplay
+              forceVariant={
+                isImageOutputModel
+                  ? 'image'
+                  : isModelDisallowedForAnonymous
+                    ? 'model'
+                    : 'credits'
+              }
+              className="p-2"
+            />
+          )}
+
+          <ContextBar
+            className=""
+            attachments={attachments}
+            uploadQueue={uploadQueue}
+            onRemove={removeAttachment}
+            onImageClick={handleImageClick}
+            selectedModelId={selectedModelId}
+            parentMessageId={parentMessageId}
+          />
 
           <ChatInputTextArea
             data-testid="multimodal-input"
@@ -533,17 +572,11 @@ function PureMultimodalInput({
                 : !event.shiftKey && !event.isComposing;
 
               if (shouldSubmit) {
-                if (status !== 'ready' && status !== 'error') {
-                  toast.error(
-                    'Please wait for the model to finish its response!',
-                  );
-                } else if (uploadQueue.length > 0) {
-                  toast.error('Please wait for files to finish uploading!');
-                } else if (isEmpty) {
-                  toast.error('Please enter a message before sending!');
-                } else {
-                  submitForm();
+                if (!submission.enabled) {
+                  if (submission.message) toast.error(submission.message);
+                  return true;
                 }
+                submitForm();
                 return true;
               }
 
@@ -561,6 +594,7 @@ function PureMultimodalInput({
             isEmpty={isEmpty}
             submitForm={submitForm}
             uploadQueue={uploadQueue}
+            submission={submission}
           />
         </PromptInput>
       </div>
@@ -625,8 +659,6 @@ function PureAttachmentsButton({
 
 const AttachmentsButton = memo(PureAttachmentsButton);
 
-// Removed standalone StopButton; stop is now handled by PromptInputSubmit
-
 function PureChatInputBottomControls({
   selectedModelId,
   onModelChange,
@@ -637,6 +669,7 @@ function PureChatInputBottomControls({
   isEmpty,
   submitForm,
   uploadQueue,
+  submission,
 }: {
   selectedModelId: ModelId;
   onModelChange: (modelId: ModelId) => void;
@@ -647,7 +680,9 @@ function PureChatInputBottomControls({
   isEmpty: boolean;
   submitForm: () => void;
   uploadQueue: Array<string>;
+  submission: { enabled: boolean; message?: string };
 }) {
+  const stopHelper = useChatHelperStop();
   return (
     <PromptInputToolbar className="flex flex-row justify-between min-w-0 w-full gap-1 @[400px]:gap-2 border-t">
       <PromptInputTools className="flex items-center gap-1 @[400px]:gap-2 min-w-0">
@@ -655,7 +690,7 @@ function PureChatInputBottomControls({
         <ModelSelector
           selectedModelId={selectedModelId}
           className="text-xs @[400px]:text-sm w-fit shrink max-w-none px-2 @[400px]:px-3 truncate justify-start h-8 @[400px]:h-10"
-          onModelChange={onModelChange}
+          onModelChangeAction={onModelChange}
         />
         <ResponsiveTools
           tools={selectedTool}
@@ -666,12 +701,16 @@ function PureChatInputBottomControls({
       <PromptInputSubmit
         className={'shrink-0 size-8 @[400px]:size-10'}
         status={status}
-        disabled={status === 'ready' && (isEmpty || uploadQueue.length > 0)}
+        disabled={status === 'ready' && !submission.enabled}
         onClick={(e) => {
           e.preventDefault();
           if (status === 'streaming' || status === 'submitted') {
-            void chatStore.getState().currentChatHelpers?.stop?.();
+            void stopHelper?.();
           } else if (status === 'ready' || status === 'error') {
+            if (!submission.enabled) {
+              if (submission.message) toast.error(submission.message);
+              return;
+            }
             submitForm();
           }
         }}
@@ -692,6 +731,10 @@ const ChatInputBottomControls = memo(
     if (prevProps.isEmpty !== nextProps.isEmpty) return false;
     if (prevProps.submitForm !== nextProps.submitForm) return false;
     if (prevProps.uploadQueue.length !== nextProps.uploadQueue.length)
+      return false;
+    if (prevProps.submission.enabled !== nextProps.submission.enabled)
+      return false;
+    if (prevProps.submission.message !== nextProps.submission.message)
       return false;
     return true;
   },

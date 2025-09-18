@@ -1,4 +1,4 @@
-import type { ModelId } from '../ai/model-id';
+import type { ModelId } from '../models/model-id';
 import type { ToolName } from '../ai/types';
 import type { DBMessage } from '../db/schema';
 import type { UIChat } from './uiChat';
@@ -22,6 +22,7 @@ export const ANONYMOUS_LIMITS = {
     'openai/gpt-5-mini',
     'openai/gpt-5-nano',
     'openai/gpt-4o-mini',
+    'cohere/command-a',
   ] as const satisfies ModelId[],
   AVAILABLE_TOOLS: ['createDocument', 'updateDocument'] satisfies ToolName[],
   SESSION_DURATION: 2147483647, // Max session time

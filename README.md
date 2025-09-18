@@ -20,7 +20,7 @@ Access every major AI assistant Claude, GPT-4, Gemini, Grok, and 20+ models thro
 
 ## ✨ Features
 
-- **🤖 Multi-Model Chat** - Access 100+ AI models including Claude, GPT-5, Gemini, and Grok in one interface.
+- **🤖 Multi-Model Chat** - Access 90+ AI models including Claude, GPT-5, Gemini, and Grok in one interface.
 
 - **🔐 Authentication & Sync** - Secure authentication with chat history sync across all devices.
 
@@ -43,6 +43,8 @@ Access every major AI assistant Claude, GPT-4, Gemini, Grok, and 20+ models thro
 - **⚡ Code Execution** - Run Python, JavaScript, and more in secure sandboxes.
 
 - **📄 Document Creation** - Generate and edit documents, spreadsheets, and presentations.
+
+- **📊 Web Analytics** - Built-in Vercel Web Analytics (enable in Vercel dashboard).
 
 
 ## 🛠️ Tech Stack
