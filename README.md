@@ -1,115 +1,99 @@
 <div align="center">
 
-<img src="public/icon.svg" alt="Sparka AI" width="64" height="64">
+<img src="apps/chat/app/icon.svg" alt="ChatJS" width="64" height="64">
 
-# Sparka AI
+# ChatJS
 
-**AI for everyone, from everyone**
+Stop rebuilding the same AI chat infrastructure. ChatJS gives you a production-ready foundation with authentication, 120+ models, streaming, and tools so you can focus on what makes your app unique.
 
-*Multi-provider AI Chat - access Claude, ChatGPT, Gemini, and Grok with advanced features, open-source and production-ready.*
+[**Website**](https://chatjs.dev) · [**Live Demo**](https://demo.chatjs.dev) · [**Documentation**](https://chatjs.dev/docs)
 
-[**Try Sparka AI**](https://sparka.ai)
-
+![DemosOnly](https://github.com/user-attachments/assets/f12e89dd-c10c-4e06-9b1a-a9fbd809d234)
 
 </div>
 
-![sparka_gif_demo](https://github.com/user-attachments/assets/34a03eed-58fa-4b1e-b453-384351b1c08c)
+<br />
 
-Access every major AI assistant Claude, GPT-4, Gemini, Grok, and 20+ models through one interface. Get capabilities like document analysis, image generation, code execution, and research tools without managing multiple subscriptions. Try instantly, no signup required.
+## CLI
 
+Create a new ChatJS app:
 
-## ✨ Features
+```bash
+npx @chat-js/cli@latest create my-app
+```
 
-- **🤖 Multi-Model Chat** - Access 90+ AI models including Claude, GPT-5, Gemini, and Grok in one interface.
+The CLI walks you through gateway, features, and auth choices, generates `chat.config.ts`, and lists the env vars required by your selections.
 
-- **🔐 Authentication & Sync** - Secure authentication with chat history sync across all devices.
+## Features
 
-- **🎯 Easy to Try** - Try the interface and some features without creating an account.
+- **120+ Models**: Claude, GPT, Gemini, Grok via one API
+- **Auth**: GitHub, Google, anonymous. Ready to go.
+- **Attachments**: Images, PDFs, docs. Drag and drop.
+- **Resumable Streams**: Continue generation after page refresh
+- **Branching**: Fork conversations, explore alternatives
+- **Sharing**: Share conversations with public links
+- **Web Search**: Real-time web search integration
+- **Image Generation**: AI-powered image creation
+- **Code Execution**: Run code snippets in sandbox
+- **MCP**: Model Context Protocol support
+- **Desktop App**: Package as a native macOS, Windows, or Linux app with Electron
 
-- **📎 Attachment Support** - Upload and analyze images, PDFs, and documents in conversations.
+## Stack
 
-- **🎨 AI-Powered Image Generation** - Generate and edit images with advanced AI models.
+- [Next.js](https://nextjs.org) - App Router, React Server Components
+- [TypeScript](https://www.typescriptlang.org) - Full type safety
+- [AI SDK](https://ai-sdk.dev/) - The AI Toolkit for TypeScript
+- [AI Gateway](https://vercel.com/ai-gateway) - Unified access to 120+ AI models
+- [Better Auth](https://www.better-auth.com) - Authentication & authorization
+- [Drizzle ORM](https://orm.drizzle.team) - Type-safe database queries
+- [PostgreSQL](https://www.postgresql.org) - Primary database
+- [Redis](https://redis.io) - Caching & resumable streams
+- [Vercel Blob](https://vercel.com/storage/blob) - Blob storage
+- [Shadcn/UI](https://ui.shadcn.com) - Beautiful, accessible components
+- [Tailwind CSS](https://tailwindcss.com) - Styling
+- [tRPC](https://trpc.io) - End-to-end type-safe APIs
+- [Zod](https://zod.dev) - Schema validation
+- [Zustand](https://zustand.docs.pmnd.rs/) - State management
+- [Motion](https://motion.dev) - Animations
+- [t3-env](https://env.t3.gg) - Environment variables
+- [Pino](https://getpino.io) - Structured Logging
+- [Langfuse](https://langfuse.com) - LLM observability & analytics
+- [Vercel Analytics](https://vercel.com/analytics) - Web analytics
+- [Biome](https://biomejs.dev) - Code linting and formatting
+- [Ultracite](https://ultracite.ai) - Biome preset for humans and AI
+- [Streamdown](https://streamdown.ai/) - Markdown for AI streaming
+- [AI Elements](https://elements.ai-sdk.dev/overview) - AI-native Components
+- [AI SDK Tools](https://ai-sdk-tools.dev/) - Developer tools for AI SDK
 
-- **💻 Syntax Highlighting** - Beautiful code formatting and highlighting for all programming languages.
+## Monorepo Layout
 
-- **🔄 Resumable Streams** - Continue AI generations after page refreshes or interruptions.
+- `apps/site`: Landing page ([chatjs.dev](https://chatjs.dev))
+- `apps/chat`: Next.js chat app ([demo.chatjs.dev](https://demo.chatjs.dev))
+- `apps/docs`: Mintlify docs ([chatjs.dev/docs](https://chatjs.dev/docs))
+- `packages/cli`: interactive scaffold CLI
 
-- **🌳 Chat Branching** - Create alternative conversation paths without losing your original thread.
+## Development
 
-- **🔗 Chat Sharing** - Share conversations with others and collaborate on AI-assisted projects.
+- `bun dev:chat`: run chat app
+- `bun dev:docs`: run docs
+- `bun lint`: run workspace lint
+- `bun test:types`: run chat app typecheck
 
-- **🔭 Deep Research** - Comprehensive research with real-time web search, source analysis, and cited findings.
+## Releases
 
-- **⚡ Code Execution** - Run Python, JavaScript, and more in secure sandboxes.
+Releases are driven by Changesets for the whole repository.
 
-- **📄 Document Creation** - Generate and edit documents, spreadsheets, and presentations.
+- Add a changeset for each releasable package you change.
+- Merge the generated version PR from the Changesets workflow.
+- Public packages such as `@chat-js/cli` publish to npm.
+- Desktop installers for `@chat-js/electron` publish to GitHub Releases.
 
-- **📊 Web Analytics** - Built-in Vercel Web Analytics (enable in Vercel dashboard).
+## License
 
+Apache-2.0
 
-## 🛠️ Tech Stack
-
-Sparka AI is built with modern technologies for scalability and performance:
-
-### **Frontend**
-- **Next.js 15**: App Router with React Server Components
-- **TypeScript**: Full type safety and developer experience
-- **Tailwind CSS**: Responsive, utility-first styling
-- **Radix UI**: Accessible component primitives
-- **Framer Motion**: Smooth animations and transitions
-- **Zustand**: Lightweight state management
-
-### **Backend**
-- **Vercel AI SDK**: Unified AI provider integration
-- **tRPC**: End-to-end typesafe APIs
-- **Drizzle ORM**: Type-safe database operations
-- **PostgreSQL**: Robust data persistence
-- **Redis**: Caching and real-time features
-
-### **AI Integration**
-- **AI SDK v5**: Latest Vercel AI SDK for unified provider integration
-- **AI SDK Gateway**: Models from various AI providers with automatic fallbacks
-
-
-## 🚀 Getting Started
-
-### **Prerequisites**
-- Node.js 18+ or Bun
-- PostgreSQL database
-- Redis (optional, for scaling)
-
-### **Quick Start**
-
-1. **Clone and Install**
-   ```bash
-   git clone https://github.com/franciscomoretti/sparka.git
-   cd sparka
-   bun install
-   ```
-
-2. **Environment Setup**
-   ```bash
-   cp .env.example .env.local
-   # Configure your environment variables
-   ```
-
-3. **Database Setup**
-   ```bash
-   bun run db:migrate
-   ```
-
-4. **Development Server**
-   ```bash
-   bun dev
-   ```
-
-Visit [http://localhost:3000](http://localhost:3000) to start using Sparka AI locally.
-
-
-## 🙏 Acknowledgements
-
-Sparka AI was built on the shoulders of giants. We're deeply grateful to these outstanding open source projects:
-
-- **[Vercel AI Chatbot](https://github.com/vercel/ai-chatbot)** - Core architecture and AI SDK integration patterns
-- **[Scira](https://github.com/zaidmukaddam/scira)** - AI-powered search engine
-
+<br />
+<a href="https://vercel.com/oss">
+  <img alt="Vercel OSS Program" src="https://vercel.com/oss/program-badge.svg" />
+</a>
+<br />

@@ -10,8 +10,10 @@ coverage
 
 # next.js
 .next/
+apps/*/.next/
 out/
 build
+next-env.d.ts
 
 # misc
 .DS_Store
@@ -25,6 +27,7 @@ yarn-error.log*
 
 # local env files
 .env.local
+.neon-branch
 .env.development.local
 .env.test.local
 .env.production.local
@@ -41,5 +44,36 @@ yarn-error.log*
 /playwright-report/
 /blob-report/
 /playwright/*
+apps/*/test-results/
+apps/*/playwright-report/
+apps/*/blob-report/
+apps/*/playwright/*
 
 tsconfig.tsbuildinfo
+
+packages/*/dist
+packages/cli/templates
+templates
+
+# Evalite DB
+evals/db/
+apps/*/evals/db/
+
+# Neon
+.neon
+
+# Electron
+apps/electron/dist/
+apps/electron/release/
+apps/electron/out/
+apps/electron/branding.json
+
+/.skillz
+/AGENTS.md
+/AGENTS.md.bak
+/CLAUDE.md
+/CLAUDE.md.bak
+# END Skiller Generated Files
+.devtools
+.cursor/hooks/state
+.codex/environments/
