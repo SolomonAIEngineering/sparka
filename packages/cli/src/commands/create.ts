@@ -443,6 +443,7 @@ const promptCreateSetup = async (
     {
       plugins: [
         ...observability,
+        ...(withElectron ? ["desktop"] : []),
         ...(coreFeatures.mcp ? ["mcp"] : []),
         ...(coreFeatures.projects ? ["projects"] : []),
         ...(coreFeatures.feedback ? ["feedback"] : []),
@@ -517,7 +518,6 @@ const writeConfiguration = async (
         coreFeatures: setup.coreFeatures,
         gateway: setup.gateway,
         gatewayDefaults: setup.gatewaySelection.definition.defaults,
-        withElectron: setup.withElectron,
       })
     );
     configSpinner.succeed("Configuration written.");

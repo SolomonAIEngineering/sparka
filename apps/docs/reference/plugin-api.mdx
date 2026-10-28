@@ -16,7 +16,9 @@ Keep server and browser import graphs separate:
 | `server-plugin.ts` | `ChatPlugin` | tRPC routers, instrumentation |
 | `chat.ts` | `ChatServerIntegration` | Transactional chat integration, safe for EVE and Next.js |
 | `billing.ts` | `UsageBilling` | Spending admission and transactional debits, safe for EVE and Next.js |
-| `client-plugin.ts` | `ChatClientPlugin` | Composer controls, settings, layout, uploads, model visibility, chat UI, account summary |
+| `auth-server.ts` | `AuthenticationIntegration` | Better Auth plugins, trusted origins, auth route matching |
+| `navigation.ts` | `() => boolean` | Whether core handles modified links as app navigation |
+| `client-plugin.ts` | `ChatClientPlugin` | Composer controls, settings, layout, uploads, model visibility, chat UI, account summary, authentication UI |
 
 Keep `chat.ts` and `billing.ts` free of web routers and Next.js request helpers: native EVE loads this entrypoint too.
 
@@ -143,6 +145,16 @@ The client `chat.MessageActions` placement receives `{ conversationId, messageId
 When you add `chat.Suggestions`, it receives `conversationId`, native `events`, `lastMessage?: { role, metadata?: { turnId?: string } }`, `disabled`, and `onSelect`. It renders beneath the last editable message when transcript actions are available. Handle a missing `lastMessage`, `metadata`, or `turnId` without assuming completion identity. Your plugin owns completion matching, storage reads, and polling. The callback returns the selected text to core's existing send/compare flow.
 
 Follow-up Suggestions uses native EVE hooks for generation and the per-conversation cleanup callback for session-owned records. Its claim-before-generation rule and core usage accounting survive extraction; no new event bus or generic mutation wrapper is involved.
+
+## Authentication and desktop navigation
+
+Declare `authentication: { export: "desktopAuth" }` for an `AuthenticationIntegration` exported from `auth-server.ts`. Core adds its Better Auth `plugins` and `trustedOrigins`, and consults `isAuthRoute(url)` before redirecting page requests. Match routes narrowly: this predicate lets unauthenticated visitors reach the page and keeps signed-in users on authentication handoff pages. It does not replace endpoint authentication or authorize data access.
+
+Declare `client.authentication: true` and return an `authentication` object from your client factory. Its `Form` receives `mode: "login" | "register"` and the normal web form as `children`. Render the children when your integration does not apply. Its asynchronous `signOut()` returns `true` after handling sign-out, `false` to use core web sign-out, and rejects on failure. Core clears cached account data and navigates only after success.
+
+Declare `navigation: { export: "desktopNavigation" }` for a function exported from `navigation.ts`. Return `true` when core should handle modified internal links as normal app navigation. With no contribution, core preserves browser modifier behavior. Keep this entry independent of auth UI and client factories to avoid an import cycle through the shared link component.
+
+Each of these slots accepts one provider. Without contributions, generated registrations add no auth plugins or origins, recognize no extra auth routes, render the web form unchanged, and defer to web sign-out. [Desktop](../plugins/desktop) also uses the existing layout contribution for renderer session synchronization. It introduces no plugin database schema.
 
 ## Native hooks and instructions
 

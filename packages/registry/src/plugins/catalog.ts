@@ -1,3 +1,4 @@
+import { desktopItem } from "./desktop/manifest";
 import { creditsItem } from "./credits/manifest";
 import { modelPreferencesItem } from "./model-preferences/manifest";
 import { sharingItem } from "./sharing/manifest";
@@ -15,6 +16,7 @@ export const pluginItems = [
   feedbackItem,
   followupSuggestionsItem,
   searchItem,
+  desktopItem,
   creditsItem,
   modelPreferencesItem,
   aiTitlesItem,

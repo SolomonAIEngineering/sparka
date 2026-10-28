@@ -1,8 +1,9 @@
+import type { AuthenticationIntegration } from "@/lib/authentication-contracts";
 import {
-  ELECTRON_APP_SCHEME,
   ELECTRON_AUTH_CLIENT_ID,
   ELECTRON_AUTH_COOKIE_PREFIX,
-} from "./electron-auth";
+} from "./protocol";
+import { ELECTRON_APP_SCHEME } from "./electron-auth";
 import type { AuthContext } from "better-auth";
 import type { ReadonlyNativeSurface } from "@/lib/readonly-native-surface";
 import { electron } from "@better-auth/electron";
@@ -38,4 +39,12 @@ const electronAuthPlugin = {
   },
 };
 
+export const desktopAuth = {
+  plugins: [electronAuthPlugin],
+  trustedOrigins: [`${ELECTRON_APP_SCHEME}:/`],
+  isAuthRoute: (url) =>
+    url.pathname === "/device-login" ||
+    ((url.pathname === "/login" || url.pathname === "/register") &&
+      url.searchParams.get("client_id") === ELECTRON_AUTH_CLIENT_ID),
+} satisfies AuthenticationIntegration;
 export { electronAuthPlugin };

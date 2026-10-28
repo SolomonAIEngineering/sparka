@@ -221,9 +221,7 @@ const assertUniqueContributions = (
     "video",
   ]);
   const settings = new Set(["general"]);
-  let uploads = false;
-  let billing = false;
-  let modelVisibility = false;
+  const exclusive = new Set<string>();
   for (const plugin of plugins) {
     for (const [keys, seen, label] of [
       [plugin.server?.routers ?? [], routers, "router"],
@@ -237,23 +235,21 @@ const assertUniqueContributions = (
         seen.add(key);
       }
     }
-    if (plugin.billing) {
-      if (billing) {
-        throw new Error("Only one plugin may supply usage billing.");
+    for (const [present, label] of [
+      [plugin.authentication, "authentication"],
+      [plugin.client?.authentication, "authentication UI"],
+      [plugin.navigation, "modified navigation"],
+      [plugin.billing, "usage billing"],
+      [plugin.client?.modelVisibility, "model visibility"],
+      [plugin.client?.uploads, "attachment uploads"],
+    ] as const) {
+      if (present === undefined) {
+        continue;
       }
-      billing = true;
-    }
-    if (plugin.client?.modelVisibility) {
-      if (modelVisibility) {
-        throw new Error("Only one plugin may supply model visibility.");
+      if (exclusive.has(label)) {
+        throw new Error(`Only one plugin may supply ${label}.`);
       }
-      modelVisibility = true;
-    }
-    if (plugin.client?.uploads) {
-      if (uploads) {
-        throw new Error("Only one plugin may supply attachment uploads.");
-      }
-      uploads = true;
+      exclusive.add(label);
     }
   }
   assertPluginDependencies(plugins);
@@ -312,7 +308,27 @@ const renderPluginRegistrations = (
   const accountUi = plugins.filter((plugin) => plugin.client?.accountSummary);
   const chat = plugins.filter((plugin) => plugin.chat);
   const chatUi = plugins.filter((plugin) => plugin.client?.chat);
+  const authentication = plugins.find((plugin) => plugin.authentication);
+  const authUi = plugins.filter((plugin) => plugin.client?.authentication);
+  const navigation = plugins.filter((plugin) => plugin.navigation);
   const contents = [
+    [
+      "installed-auth",
+      `${authentication ? `import { ${authentication.authentication?.export} as pluginAuth } from "@/plugins/${authentication.id}/auth-server";` : ""}
+import type { AuthenticationIntegration } from "@/lib/authentication-contracts";
+export const installedAuth: AuthenticationIntegration = ${authentication ? "pluginAuth" : "{ plugins: [], trustedOrigins: [], isAuthRoute: () => false }"};`,
+    ],
+    [
+      "installed-auth-ui",
+      `${imports(authUi, "client")}
+import type { AuthenticationUi } from "@/lib/authentication-contracts";
+export const authenticationUi: AuthenticationUi = ${authUi.length > 0 ? "plugin0().authentication" : "{ Form: ({ children }) => children, signOut: () => Promise.resolve(false) }"};`,
+    ],
+    [
+      "installed-navigation",
+      `${navigation.map((plugin) => `import { ${plugin.navigation?.export} as navigate } from "@/plugins/${plugin.id}/navigation";`).join("\n")}
+export const handleModifiedNavigation: () => boolean = ${navigation.length > 0 ? "navigate" : "() => false"};`,
+    ],
     ["installed-billing", billingRegistration(plugins)],
     ["installed-account-ui", accountSummaryRegistration(accountUi)],
     [

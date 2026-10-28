@@ -1,4 +1,4 @@
-import { ELECTRON_AUTH_COOKIE_PREFIX } from "@/lib/electron-auth";
+import { ELECTRON_AUTH_COOKIE_PREFIX } from "../config";
 
 const isSessionTokenCookieName = (name: string): boolean =>
   name.endsWith(".session_token");

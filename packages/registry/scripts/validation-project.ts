@@ -85,7 +85,6 @@ export const renderValidationProject = async (
       appName: identity.title,
       appPrefix: identity.name,
       appUrl: "http://localhost:3000",
-      withElectron: false,
       gateway: gateway.id,
       gatewayDefaults: gateway.defaults,
       coreFeatures,

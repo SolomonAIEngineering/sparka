@@ -942,3 +942,51 @@ test("two billing contributors fail before any registration is written", async (
   await rejects(syncPlugins(root), /Only one plugin may supply usage billing/u);
   expect(await readFile(file, "utf-8")).toBe(before);
 });
+
+test.each([
+  {
+    label: "authentication",
+    entry: "auth-server.ts",
+    contribution: { authentication: { export: "auth" } },
+  },
+  {
+    label: "authentication UI",
+    entry: "client-plugin.ts",
+    contribution: { client: { export: "client", authentication: true } },
+  },
+  {
+    label: "modified navigation",
+    entry: "navigation.ts",
+    contribution: { navigation: { export: "navigation" } },
+  },
+])(
+  "duplicate $label providers leave registrations unchanged",
+  async ({ label, entry, contribution }) => {
+    const root = await fixture();
+    await initializePluginUi(root);
+    const file = path.join(root, "composition/generated/installed-auth.ts");
+    const before = await readFile(file, "utf-8");
+    await Promise.all(
+      ["first", "second"].map(async (id) => {
+        const directory = path.join(root, "plugins", id);
+        await mkdir(directory, { recursive: true });
+        await writeFile(path.join(directory, entry), "export {};\n");
+        await writeFile(
+          path.join(directory, "chatjs.json"),
+          JSON.stringify({
+            contractVersion: 2,
+            uiBase: "base",
+            id,
+            kind: "plugin",
+            files: [`plugins/${id}/${entry}`],
+            ...contribution,
+          })
+        );
+      })
+    );
+    await rejects(syncPlugins(root), {
+      message: `Only one plugin may supply ${label}.`,
+    });
+    expect(await readFile(file, "utf-8")).toBe(before);
+  }
+);

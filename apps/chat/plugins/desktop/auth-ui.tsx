@@ -17,9 +17,9 @@ import type { Session } from "@/lib/auth";
 
 import config from "@/chat.config";
 
-import authClient from "@/lib/auth-client";
+import authClient from "@/plugins/desktop/desktop-auth-client";
 
-import { Button, buttonVariants } from "./ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 
 import { useRouter } from "next/navigation";
 

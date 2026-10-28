@@ -1,3 +1,4 @@
+import type { AuthenticationUi } from "./authentication-contracts";
 import type { ComponentType } from "react";
 import type { ChatClientIntegration } from "./chat-plugin-contracts";
 import type { ComposerControl } from "@/components/composer/control";
@@ -20,6 +21,7 @@ interface ChatPlugin {
 /** Use satisfies to retain each plugin's inferred contributions. */
 interface ChatClientPlugin {
   readonly id: string;
+  readonly authentication?: AuthenticationUi;
   readonly accountSummary?: ComponentType;
   readonly chat?: ChatClientIntegration;
   readonly composerControls?: readonly ComposerControl[];

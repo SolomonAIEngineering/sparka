@@ -1,4 +1,8 @@
-import { parseJsonObject, requireJsonObject } from "../src/helpers/json-object";
+import {
+  isStringArray,
+  parseJsonObject,
+  requireJsonObject,
+} from "../src/helpers/json-object";
 import { expect } from "bun:test";
 import { format } from "oxfmt";
 import {
@@ -21,6 +25,8 @@ const fixture: { core?: Map<string, Uint8Array> } = {};
 // are independently exercised by their existing integration checks.
 const comparable = (file: string): boolean =>
   file !== "next-env.d.ts" &&
+  // Companion contents/build are exercised by the packed desktop fixture.
+  !file.startsWith("electron/") &&
   !/^(?:node_modules|\.git|\.chatjs|\.next|\.eve|\.output|lib\/db\/migrations)(?:\/|$)/u.test(
     file
   ) &&
@@ -61,6 +67,9 @@ const normalizeFile = async (
 ): Promise<unknown> => {
   const source = new TextDecoder().decode(bytes);
   const encoder = new TextEncoder();
+  if (file === "tsconfig.json") {
+    return parseJsonObject(source, "tsconfig.json");
+  }
   if (file === "package.json" || file === "components.json") {
     return file === "package.json" ? manifest(source) : normalize(source);
   }
@@ -99,6 +108,24 @@ export const verifyInstallationParity = async (
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
       .join(" "),
   });
+  if (selection.plugins.includes("desktop")) {
+    const bytes = predicted.files.get("tsconfig.json");
+    if (!bytes) {
+      throw new Error("Missing predicted tsconfig");
+    }
+    const config = parseJsonObject(
+      new TextDecoder().decode(bytes),
+      "tsconfig.json"
+    );
+    config.exclude = [
+      ...(isStringArray(config.exclude) ? config.exclude : []),
+      "electron",
+    ];
+    predicted.files.set(
+      "tsconfig.json",
+      new TextEncoder().encode(JSON.stringify(config))
+    );
+  }
   const actual = await readProjectFiles(cwd, comparable);
   expect(await compareInstallationProjects(predicted.files, actual)).toEqual(
     []

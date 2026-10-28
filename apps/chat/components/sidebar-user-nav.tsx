@@ -41,7 +41,7 @@ import { installedAccountSummaries } from "@/composition/generated/installed-acc
 import authClient from "@/lib/auth-client";
 
 import { cn } from "@/lib/utils";
-import { isElectronRenderer } from "@/lib/electron-auth";
+import { authenticationUi } from "@/composition/generated/installed-auth-ui";
 
 import { signOutAndNavigate } from "@/lib/sign-out";
 
@@ -195,50 +195,21 @@ export const SidebarUserNav = (): ReactJSX.Element => {
               <DropdownMenuItem
                 onClick={() => {
                   startEventAction(async () => {
-                    if (
-                      isElectronRenderer() &&
-                      typeof window.signOut === "function"
-                    ) {
-                      const nativeSignOut = window.signOut.bind(window);
-                      await signOutAndNavigate({
-                        navigate: () => {
-                          globalThis.location.href = "/";
-                        },
-                        onFailure: () => {
-                          toast.error("Unable to sign out. Try again.");
-                        },
-                        onSyncFailure: (error) => {
-                          console.error(
-                            "Failed to refresh the signed-out Electron session",
-                            error
-                          );
-                        },
-                        signOut: nativeSignOut,
-                        syncSession: async () => {
-                          await window.electronAPI?.syncAuthSession?.();
-                        },
-                      });
-                    } else {
-                      await signOutAndNavigate({
-                        navigate: () => {
-                          globalThis.location.href = "/";
-                        },
-                        onFailure: () => {
-                          toast.error("Unable to sign out. Try again.");
-                        },
-                        onSyncFailure: (error) => {
-                          console.error(
-                            "Failed to refresh the signed-out session",
-                            error
-                          );
-                        },
-                        signOut: async () => {
+                    await signOutAndNavigate({
+                      navigate: () => {
+                        globalThis.location.href = "/";
+                      },
+                      onFailure: () => {
+                        toast.error("Unable to sign out. Try again.");
+                      },
+                      signOut: async () => {
+                        if (!(await authenticationUi.signOut())) {
                           await authClient.signOut({
                             fetchOptions: { throw: true },
                           });
-                        },
-                      });
-                    }
+                        }
+                      },
+                    });
                   });
                 }}
               >
