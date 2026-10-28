@@ -8,11 +8,9 @@ import type {
 import { gatewayModelDefaults, gatewayType } from "./ai/gateway-model-defaults";
 import { isNonEmptyString } from "./is-non-empty-string";
 
-import type { ToolName } from "./ai/types";
 import { z } from "zod";
 
 // Helper to create typed model ID schemas
-const toolName = (): z.ZodCustom<ToolName, ToolName> => z.custom<ToolName>();
 
 // =====================================================
 // AI config — discriminated union keyed on gateway
@@ -36,9 +34,6 @@ const aiToolsSchema = z
   .prefault({});
 
 type AiSchema<Gateway extends GatewayType> = z.ZodObject<{
-  anonymousModels: z.ZodArray<
-    z.ZodCustom<GatewayModelIdMap[Gateway], GatewayModelIdMap[Gateway]>
-  >;
   curatedDefaults: z.ZodArray<
     z.ZodCustom<GatewayModelIdMap[Gateway], GatewayModelIdMap[Gateway]>
   >;
@@ -63,9 +58,6 @@ const createAiSchema = <Gateway extends GatewayType>(
   gateway: Gateway
 ): AiSchema<Gateway> =>
   z.object({
-    anonymousModels: z
-      .array(gatewayModelId<Gateway>())
-      .describe("Models available to anonymous users"),
     curatedDefaults: z
       .array(gatewayModelId<Gateway>())
       .describe("Default models enabled for new users"),
@@ -160,29 +152,6 @@ const pricingConfigSchema = z.object({
     .optional(),
 });
 
-const anonymousConfigObjectSchema = z.object({
-  availableTools: z
-    .array(toolName())
-    .describe("Tools available to anonymous users"),
-  rateLimit: z
-    .object({
-      requestsPerMinute: z.number(),
-      requestsPerMonth: z.number(),
-    })
-    .describe("Rate limits"),
-});
-
-const ANONYMOUS_DEFAULTS: z.input<typeof anonymousConfigObjectSchema> = {
-  availableTools: [],
-  rateLimit: {
-    requestsPerMinute: 5,
-    requestsPerMonth: 10,
-  },
-};
-
-const anonymousConfigSchema =
-  anonymousConfigObjectSchema.default(ANONYMOUS_DEFAULTS);
-
 const attachmentsConfigObjectSchema = z.object({
   acceptedTypes: createAcceptedAttachmentTypesSchema().describe(
     "Accepted MIME types with their file extensions"
@@ -258,7 +227,6 @@ const desktopAppConfigSchema =
 
 const configDescriptionSchema = z.object({
   ai: installedGatewaySchema,
-  anonymous: anonymousConfigObjectSchema,
   appDescription: z.string().default("AI chat powered by ChatJS"),
   appName: z.string().default("My AI Chat"),
   appPrefix: z.string().default("chatjs"),
@@ -284,7 +252,6 @@ const configDescriptionSchema = z.object({
 
 const configSchema = z.object({
   ai: aiConfigSchema,
-  anonymous: anonymousConfigSchema,
   appDescription: z.string().default("AI chat powered by ChatJS"),
   appName: z.string().default("My AI Chat"),
   appPrefix: z.string().default("chatjs"),
@@ -334,8 +301,6 @@ type PricingConfig = z.infer<typeof pricingConfigSchema>;
 
 type AiConfig = z.infer<typeof aiConfigSchema>;
 
-type AnonymousConfig = z.infer<typeof anonymousConfigSchema>;
-
 type AttachmentsConfig = z.infer<typeof attachmentsConfigSchema>;
 
 type FeaturesConfig = z.infer<typeof featuresConfigSchema>;
@@ -357,7 +322,6 @@ interface AiInputFor<Gateway extends GatewayType> {
   providerOrder?: AiShape["providerOrder"];
   disabledModels?: GatewayModelIdMap[Gateway][];
   curatedDefaults?: GatewayModelIdMap[Gateway][];
-  anonymousModels?: GatewayModelIdMap[Gateway][];
   workflows?: Partial<{
     [Workflow in keyof AiShape["workflows"]]: GatewayModelIdMap[Gateway];
   }>;
@@ -434,9 +398,6 @@ const applyDefaults = (input: ReadonlyConfigData<ConfigInput>): Config => {
 
 export {
   aiConfigSchema,
-  ANONYMOUS_DEFAULTS,
-  anonymousConfigObjectSchema,
-  anonymousConfigSchema,
   applyDefaults,
   ATTACHMENTS_DEFAULTS,
   attachmentsConfigObjectSchema,
@@ -457,7 +418,6 @@ export {
 };
 export type {
   AiConfig,
-  AnonymousConfig,
   AttachmentsConfig,
   AuthenticationConfig,
   Config,

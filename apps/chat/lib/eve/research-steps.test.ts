@@ -19,7 +19,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("./turn-tools", () => ({
-  eveToolAllowed: (): boolean => true,
+  eveTurnAccount: { get: (): boolean => true },
   eveTurnTool: { get: mocks.selected },
 }));
 
@@ -60,7 +60,7 @@ vi.mock("./shared-messages", () => ({
 }));
 const owner = {
   attributes: {},
-  authenticator: "test",
+  authenticator: "chatjs-gateway",
   principalId: "owner",
   principalType: "user",
 };
@@ -126,7 +126,7 @@ it("rejects guest and incompatible selected-tool invocations", async () => {
         ...ctx.session,
         auth: {
           current: owner,
-          initiator: { ...owner, attributes: { chatjsGuest: "true" } },
+          initiator: { ...owner, authenticator: "chatjs-disposable-guest" },
         },
       },
     })

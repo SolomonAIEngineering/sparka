@@ -41,9 +41,6 @@ vi.mock("@/composition/generated/installed-tools", async (importOriginal) => {
   }
   return { ...actual, installedDocumentKinds: mocks.kinds };
 });
-vi.mock("../types/anonymous", () => ({
-  ANONYMOUS_LIMITS: { AVAILABLE_TOOLS: [] },
-}));
 
 const startTurn = async (selectedTool?: string, principalType = "user") =>
   await selectionHook.events?.["turn.started"]?.(
@@ -68,14 +65,16 @@ const startTurn = async (selectedTool?: string, principalType = "user") =>
               ...(isNonEmptyString(selectedTool) ? { selectedTool } : {}),
               ...(principalType === "guest" ? { chatjsGuest: "true" } : {}),
             },
-            authenticator: "gateway",
+            authenticator: "chatjs-gateway",
             principalId: "owner",
             principalType: "user",
           },
           initiator: {
             attributes: { selectedTool: "webSearch" },
             authenticator:
-              principalType === "guest" ? "chatjs-disposable-guest" : "gateway",
+              principalType === "guest"
+                ? "chatjs-disposable-guest"
+                : "chatjs-gateway",
             principalId: "owner",
             principalType: "user",
           },

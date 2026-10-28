@@ -65,8 +65,6 @@ import { config } from "@/lib/config";
 
 import { getEnabledFeatures } from "@/lib/features-config";
 
-import { ANONYMOUS_LIMITS } from "@/lib/types/anonymous";
-
 import { cn } from "@/lib/utils";
 import { useChatModels } from "@/providers/chat-models-provider";
 import { ModelSelectorLogo } from "./model-selector-logo";
@@ -373,9 +371,7 @@ const PureModelSelector = ({
     () =>
       chatModels.map(
         (chatModel: ReadonlyNativeSurface<AppModelDefinition>) => ({
-          disabled:
-            isAnonymous &&
-            !ANONYMOUS_LIMITS.AVAILABLE_MODELS.includes(chatModel.id),
+          disabled: isAnonymous,
           model: chatModel,
         })
       ),
@@ -461,9 +457,7 @@ const PureModelSelector = ({
     );
     if (fallbackModel) {
       return {
-        disabled:
-          isAnonymous &&
-          !ANONYMOUS_LIMITS.AVAILABLE_MODELS.includes(fallbackModel.id),
+        disabled: isAnonymous,
         model: fallbackModel,
       } satisfies ModelItem;
     }

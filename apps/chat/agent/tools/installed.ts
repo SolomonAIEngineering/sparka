@@ -1,5 +1,5 @@
 import type { DynamicResolveContext } from "eve";
-import { isGuestSession } from "../../lib/eve/session-identity";
+import { isAccountSession } from "../../lib/eve/session-identity";
 import { defineDynamic } from "eve/tools";
 
 import { eveImageContext } from "../../lib/eve/image-context";
@@ -16,7 +16,7 @@ export default defineDynamic({
         session: DynamicResolveContext["session"];
       }>
     ) => {
-      if (isGuestSession(context.session)) {
+      if (!isAccountSession(context.session)) {
         return {};
       }
       const images = eveImageContext(context.messages);

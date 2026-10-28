@@ -13,7 +13,7 @@ const home = (
     <HomePage />
   </ChatLayout>
 );
-test("home for a guest with a fixed inexpensive model", async () => {
+test("home with Guest Chat installed has a fixed inexpensive model", async () => {
   await renderRoute(home);
   await expect
     .element(page.getByText("How can I help you today?"))

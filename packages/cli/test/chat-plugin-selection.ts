@@ -18,9 +18,12 @@ const selections = [
   "ai-titles",
   "sharing",
   "credits",
+  "guest-chat",
 ] as const;
 const pluginTables = [
   "UserCredit",
+  "GuestRuntimeSession",
+  "GuestRuntimeRate",
   "Project",
   "EveChatProject",
   "EveVote",
@@ -38,6 +41,7 @@ const expectedTables: Record<(typeof selections)[number], readonly string[]> = {
   "ai-titles": [],
   sharing: [],
   credits: ["UserCredit"],
+  "guest-chat": ["GuestRuntimeSession", "GuestRuntimeRate"],
 };
 
 /** Reuse the packed CLI/registry fixture, keeping each app outside the workspace. */
@@ -81,6 +85,9 @@ export const testChatPluginSelections = (
       // accidental imports of an omitted plugin during compilation.
       expect(existsSync(path.join(cwd, "app/(chat)/share/[id]/page.tsx"))).toBe(
         selection === "sharing"
+      );
+      expect(existsSync(path.join(cwd, "app/api/eve-guest/route.ts"))).toBe(
+        selection === "guest-chat"
       );
       const pluginDirectory = path.join(cwd, "plugins");
       const installedPlugins = existsSync(pluginDirectory)
@@ -188,10 +195,21 @@ process.env.OPENAI_API_KEY = "fixture-key";
 import assert from "node:assert/strict";
 import { installedChatPlugins } from "./composition/generated/installed-chat";
 import { chatLinks } from "./lib/chat-plugins";
+import { installedSessionProfiles } from "./composition/generated/installed-session-profiles";
+import { installedCleanupTasks } from "./composition/generated/installed-cleanup";
+import { requireSessionProfile } from "./lib/eve/session-profile";
+import { requireAccountSession } from "./lib/eve/session-identity";
+assert.equal(installedSessionProfiles.length, ${selection === "guest-chat" ? 1 : 0});
+assert.equal(installedCleanupTasks.length, ${selection === "guest-chat" ? 1 : 0});
+assert.throws(() => requireSessionProfile({ auth: { initiator: { authenticator: "missing" } } }));
+assert.throws(() => requireAccountSession({ auth: { initiator: { authenticator: "chatjs-disposable-guest" } } }));
+for (const profile of installedSessionProfiles) {
+  assert.equal(await profile.authenticate(new Request("http://localhost/eve/v1/session")), null);
+}
 import { usageBilling, canSpend } from "./composition/generated/installed-billing";
 assert.equal(usageBilling !== undefined, ${selection === "credits"});
 ${selection === "none" ? 'assert.equal(await canSpend("fixture-owner"), true);' : ""}
-assert.equal(installedChatPlugins.length, ${selection === "none" || selection === "credits" || selection === "model-preferences" ? 0 : 1});
+assert.equal(installedChatPlugins.length, ${selection === "none" || selection === "credits" || selection === "model-preferences" || selection === "guest-chat" ? 0 : 1});
 assert.deepEqual(await chatLinks("fixture-owner", []), new Map());
 for (const plugin of installedChatPlugins) {
   assert.equal(typeof plugin.${lifecycleMethod}, "function");

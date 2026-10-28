@@ -1,4 +1,5 @@
-import { eveToolAllowed, eveTurnTool } from "@/lib/eve/turn-tools";
+import { isAccountSession } from "@/lib/eve/session-identity";
+import { eveTurnAccount, eveTurnTool } from "@/lib/eve/turn-tools";
 import {
   installedDocumentKinds,
   installedToolNames,
@@ -9,13 +10,11 @@ import { providers } from "@/composition/generated/providers";
 export const researchAvailable = (
   session: Pick<ToolContext["session"], "auth" | "parent">
 ): boolean => {
-  const owner = session.auth.initiator;
   const selected = eveTurnTool.get();
-  return Boolean(
-    owner &&
+  return (
+    isAccountSession(session) &&
     !session.parent &&
-    owner.attributes.chatjsGuest !== "true" &&
-    eveToolAllowed("deepResearch") &&
+    eveTurnAccount.get() &&
     (!selected || selected === "deepResearch") &&
     installedToolNames.has("deepResearch") &&
     installedDocumentKinds.has("text") &&

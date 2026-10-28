@@ -1,3 +1,4 @@
+import { guestChatItem } from "./guest-chat/manifest";
 import { creditsItem } from "./credits/manifest";
 import { modelPreferencesItem } from "./model-preferences/manifest";
 import { sharingItem } from "./sharing/manifest";
@@ -16,6 +17,7 @@ export const pluginItems = [
   followupSuggestionsItem,
   searchItem,
   creditsItem,
+  guestChatItem,
   modelPreferencesItem,
   aiTitlesItem,
   sharingItem,

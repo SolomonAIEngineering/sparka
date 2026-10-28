@@ -209,6 +209,33 @@ const assertPluginDependencies = (
   }
 };
 
+const assertRuntimeContributions = (
+  plugins: readonly PluginDefinition[]
+): void => {
+  const authenticators = new Set(["chatjs-gateway"]);
+  const cleanupIds = new Set(["orphanedAttachments"]);
+  let signedOut = false;
+  for (const plugin of plugins) {
+    if (plugin.signedOut) {
+      if (signedOut) {
+        throw new Error("Only one plugin may supply the signed-out screen.");
+      }
+      signedOut = true;
+    }
+    for (const [key, seen] of [
+      [plugin.sessionProfile?.authenticator, authenticators],
+      [plugin.cleanup?.id, cleanupIds],
+    ] as const) {
+      if (typeof key === "string" && key !== "") {
+        if (seen.has(key)) {
+          throw new Error(`Duplicate or reserved plugin identity: ${key}`);
+        }
+        seen.add(key);
+      }
+    }
+  }
+};
+
 const assertUniqueContributions = (
   plugins: readonly PluginDefinition[]
 ): void => {
@@ -257,6 +284,7 @@ const assertUniqueContributions = (
     }
   }
   assertPluginDependencies(plugins);
+  assertRuntimeContributions(plugins);
 };
 
 const imports = (
@@ -312,7 +340,30 @@ const renderPluginRegistrations = (
   const accountUi = plugins.filter((plugin) => plugin.client?.accountSummary);
   const chat = plugins.filter((plugin) => plugin.chat);
   const chatUi = plugins.filter((plugin) => plugin.client?.chat);
+  const signedOut = plugins.find((plugin) => plugin.signedOut);
+  const profiles = plugins.filter((plugin) => plugin.sessionProfile);
+  const cleanup = plugins.filter((plugin) => plugin.cleanup);
   const contents = [
+    [
+      "installed-signed-out",
+      `${signedOut ? `import { ${signedOut.signedOut?.export} as pluginScreen } from "@/plugins/${signedOut.id}/signed-out";` : ""}
+import type { ComponentType } from "react";
+export const SignedOutScreen: ComponentType | undefined = ${signedOut ? "pluginScreen" : "undefined"};`,
+    ],
+    [
+      "installed-session-profiles",
+      `${profiles.map((plugin, index) => `import { ${plugin.sessionProfile?.export} as profile${index} } from "@/plugins/${plugin.id}/session-profile";`).join("\n")}
+import type { SessionProfile } from "@/lib/session-profile-contracts";
+${profiles.map((plugin, index) => `if (profile${index}.authenticator !== ${JSON.stringify(plugin.sessionProfile?.authenticator)}) throw new Error("Session profile identity disagrees with its descriptor.");`).join("\n")}
+export const installedSessionProfiles: readonly SessionProfile[] = [${profiles.map((_, index) => `profile${index}`).join(", ")}];`,
+    ],
+    [
+      "installed-cleanup",
+      `${cleanup.map((plugin, index) => `import { ${plugin.cleanup?.export} as cleanup${index} } from "@/plugins/${plugin.id}/cleanup";`).join("\n")}
+import type { CleanupTask } from "@/lib/cleanup/contracts";
+${cleanup.map((plugin, index) => `if (cleanup${index}.id !== ${JSON.stringify(plugin.cleanup?.id)}) throw new Error("Cleanup identity disagrees with its descriptor.");`).join("\n")}
+export const installedCleanupTasks: readonly CleanupTask[] = [${cleanup.map((_, index) => `cleanup${index}`).join(", ")}];`,
+    ],
     ["installed-billing", billingRegistration(plugins)],
     ["installed-account-ui", accountSummaryRegistration(accountUi)],
     [

@@ -10,7 +10,7 @@ import {
 import type { ToolContext } from "eve/tools";
 import { getEveDocumentRevision } from "@/lib/db/eve-documents";
 import { resolveEveConversationScope } from "@/lib/eve/conversation-scope";
-import { eveToolAllowed } from "@/lib/eve/turn-tools";
+import { eveTurnAccount } from "@/lib/eve/turn-tools";
 import { codeExecutor } from "@/composition/generated/code-executor";
 
 type ReadonlyCodeExecutionContext = Readonly<
@@ -111,7 +111,7 @@ export const executeEveCodeDocument = async function* executeEveCodeDocument(
   }
   context.abortSignal.throwIfAborted();
   const source = { code: revision.content, language, title: revision.title };
-  if (!codeExecutor || !eveToolAllowed("codeExecution")) {
+  if (!codeExecutor || !eveTurnAccount.get()) {
     throw new Error("Installed code executor is unavailable.");
   }
   const result = await codeExecutor(source, {

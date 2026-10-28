@@ -942,3 +942,50 @@ test("two billing contributors fail before any registration is written", async (
   await rejects(syncPlugins(root), /Only one plugin may supply usage billing/u);
   expect(await readFile(file, "utf-8")).toBe(before);
 });
+
+test("signed-out, session policy and cleanup contributions disappear when absent", async () => {
+  const root = await fixture();
+  await initializePluginUi(root);
+  const names = ["signed-out", "session-profiles", "cleanup"];
+  for (const name of names) {
+    // oxlint-disable-next-line no-await-in-loop -- Inspect each independently generated boundary.
+    const content = await readFile(
+      path.join(root, `composition/generated/installed-${name}.ts`),
+      "utf-8"
+    );
+    expect(content).not.toContain("@/plugins/");
+  }
+});
+
+test.each([
+  { signedOut: { export: "Screen" } },
+  { sessionProfile: { export: "profile", authenticator: "same-profile" } },
+  { cleanup: { export: "cleanup", id: "same-task" } },
+])(
+  "rejects ambiguous contributions before writing registrations: %o",
+  async (contribution) => {
+    const root = await fixture();
+    await initializePluginUi(root);
+    await Promise.all(
+      ["first", "second"].map(async (id) => {
+        await mkdir(path.join(root, "plugins", id), { recursive: true });
+        await writeFile(
+          path.join(root, "plugins", id, "chatjs.json"),
+          JSON.stringify({
+            contractVersion: 1,
+            id,
+            kind: "plugin",
+            ...contribution,
+          })
+        );
+      })
+    );
+    await rejects(syncPlugins(root));
+    expect(
+      await readFile(
+        path.join(root, "composition/generated/installed-session-profiles.ts"),
+        "utf-8"
+      )
+    ).not.toContain("@/plugins/");
+  }
+);

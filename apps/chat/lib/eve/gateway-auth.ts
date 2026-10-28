@@ -5,7 +5,6 @@ import { timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 
 import { frontendToolsSchema } from "@/lib/ai/types";
-import { readEveGuestOwner } from "@/lib/db/eve-guests";
 import {
   getDeletingEveConversationForSession,
   ownsEveSession,
@@ -14,7 +13,6 @@ import {
 import { getEveSubagent } from "@/lib/db/eve-subagents";
 import { env } from "@/lib/env";
 import type { ReadonlyNativeSurface } from "@/lib/readonly-native-surface";
-import { ANONYMOUS_LIMITS } from "@/lib/types/anonymous";
 
 import { parseDeletionSessionRequest } from "./deletion-policy";
 import { loadEveModelDefinition } from "./model-selection";
@@ -116,22 +114,6 @@ const readGatewayAttributes = async (
   return attributes;
 };
 
-const guestAttributesAllowed = (
-  expiresAt: ReadonlyNativeSurface<Date>,
-  attributes: Readonly<Record<string, string>>,
-  requiresModel: boolean
-): boolean =>
-  expiresAt > new Date() &&
-  (!requiresModel || Boolean(attributes.modelId)) &&
-  (!attributes.modelId ||
-    ANONYMOUS_LIMITS.AVAILABLE_MODELS.some(
-      (model) => model === attributes.modelId
-    )) &&
-  (!attributes.selectedTool ||
-    ANONYMOUS_LIMITS.AVAILABLE_TOOLS.some(
-      (tool) => tool === attributes.selectedTool
-    ));
-
 const ownsGatewaySession = async (
   owner: string,
   sessionId: string,
@@ -194,21 +176,6 @@ export const authenticateEveGateway = async (
   const attributes = await readGatewayAttributes(request, owner);
   if (!attributes) {
     return null;
-  }
-  const guest = await readEveGuestOwner(owner);
-  if (
-    guest !== null &&
-    request.headers.get("x-chatjs-deletion") !== "1" &&
-    !guestAttributesAllowed(
-      guest.expiresAt,
-      attributes,
-      path === "/eve/v1/session"
-    )
-  ) {
-    return null;
-  }
-  if (guest !== null) {
-    attributes.chatjsGuest = "true";
   }
   return {
     attributes,

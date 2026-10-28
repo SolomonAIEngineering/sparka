@@ -37,7 +37,7 @@ Tools can declare `requiresTools`, `requiresGateway` (`image` or `video`) and `r
 | Input | Meaning |
 | --- | --- |
 | `ai.gateway` | Literal discriminator of the installed gateway, not a provider switch |
-| `ai.curatedDefaults`, `anonymousModels`, `disabledModels` | Model menus and access policy |
+| `ai.curatedDefaults`, `disabledModels` | Model menus and access policy |
 | `ai.providerOrder` | Provider ordering in the model selector |
 | `ai.workflows.chat`, `title`, `pdf`, `chatImageCompatible` | Shared workflow model defaults |
 | `ai.tools.followupSuggestions.enabled`, `.default` | Follow-up generation policy and model |
@@ -59,7 +59,6 @@ Search, retrieval, execution, media and research availability come from installe
 | --- | --- |
 | `features.parallelResponses` | Enable multiple independent responses, defaults to `true` |
 | `authentication.github`, `.google`, `.vercel` | OAuth provider toggles with matching credentials |
-| `anonymous.availableTools`, `.rateLimit` | Legacy guest route tool configuration and IP request limits |
 | `attachments.maxBytes`, `.maxDimension`, `.acceptedTypes` | Core limits for uploads, message validation and attachment restoration |
 | `desktopApp.enabled` | Desktop integration policy for an Electron installation |
 | `appName`, `appTitle`, `appPrefix`, `appDescription`, `appUrl` | Product identity and URLs |
@@ -73,3 +72,5 @@ Pricing text does not configure payment processing. Guest access limits do not r
 `bun run check-env` checks base application credentials, the installed gateway/storage/tool/feature requirements and enabled OAuth providers. It also runs before development and production builds. A search installation requires its selected provider's key. Setting the other search provider's key does not change the installed implementation.
 
 For example, a minimal app omits MCP, uploads, tools and telemetry and needs no credentials for those absent capabilities. Adding MCP requires `MCP_ENCRYPTION_KEY` even before a connector is configured. See [Configuration](../core/configuration) for installation and replacement commands.
+
+Guest model and rate limits belong to [Guest Chat](../plugins/guest-chat) in `plugins/guest-chat/guest-policy.ts`. Core has no anonymous model or quota settings.
