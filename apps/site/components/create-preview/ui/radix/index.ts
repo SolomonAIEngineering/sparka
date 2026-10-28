@@ -1,3 +1,4 @@
+export * from "./scroll-area"
 export * from "./sidebar"
 export * from "./sheet"
 export * from "./separator"

@@ -14,11 +14,11 @@ import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
-  SidebarGroup,
   SidebarHeader,
+  SidebarSeparator,
+  SidebarGroup,
   SidebarMenu,
   SidebarMenuItem,
-  SidebarSeparator,
 } from "@/components/ui/sidebar";
 
 import { NewChatButton } from "@/components/new-chat-button";
@@ -26,6 +26,7 @@ import type { JSX as ReactJSX } from "react";
 import { SidebarTopRow } from "@/components/sidebar-top-row";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { ChatSidebarView } from "./chat-sidebar-view";
 
 import { SidebarUserNav } from "./sidebar-user-nav";
 
@@ -58,13 +59,18 @@ const HistorySkeleton = (): React.JSX.Element => (
 );
 
 export const AppSidebar = (): React.JSX.Element => (
-  <Sidebar
-    className="grid max-h-dvh grid-rows-[auto_1fr_auto] border-x-0"
-    side={components.rtl ? "right" : "left"}
-    dir={components.rtl ? "rtl" : "ltr"}
-    collapsible="icon"
-  >
-    <SidebarHeader className="shrink-0">
+  <ChatSidebarView
+    primitives={{
+      Sidebar,
+      SidebarContent,
+      SidebarFooter,
+      SidebarHeader,
+      SidebarSeparator,
+      ScrollArea,
+    }}
+    direction={components.rtl ? "rtl" : "ltr"}
+    footer={<SidebarUserNav />}
+    header={
       <SidebarMenu>
         <div className="flex flex-row items-center justify-between">
           <SidebarTopRow />
@@ -95,19 +101,11 @@ export const AppSidebar = (): React.JSX.Element => (
           </SidebarMenuItem>
         )}
       </SidebarMenu>
-    </SidebarHeader>
-    <SidebarSeparator />
-    <ScrollArea className="relative flex-1 overflow-y-auto">
-      <SidebarContent className="max-w-(--sidebar-width) pr-2 group-data-[collapsible=icon]:hidden">
-        <Suspense fallback={<HistorySkeleton />}>
-          <PluginSidebar />
-          <EveHistory />
-        </Suspense>
-      </SidebarContent>
-    </ScrollArea>
-    <SidebarSeparator />
-    <SidebarFooter>
-      <SidebarUserNav />
-    </SidebarFooter>
-  </Sidebar>
+    }
+  >
+    <Suspense fallback={<HistorySkeleton />}>
+      <PluginSidebar />
+      <EveHistory />
+    </Suspense>
+  </ChatSidebarView>
 );

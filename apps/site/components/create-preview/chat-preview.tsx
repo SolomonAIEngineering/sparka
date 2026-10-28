@@ -5,6 +5,10 @@ import { decodePreset, DEFAULT_PRESET_CONFIG } from "shadcn/preset";
 import { useTheme } from "next-themes";
 import { getPresetCode } from "@/vendor/shadcn-create/lib/preset-code";
 import { installationSelectionSchema } from "../../../../packages/registry/installation";
+import { ChatMessageView } from "../../../chat/components/chat-message-view";
+import { ChatSidebarView } from "../../../chat/components/chat-sidebar-view";
+import { AttachmentCardView } from "../../../chat/components/attachment-card-view";
+import { ComposerAttachments } from "../../../chat/components/composer/composer-attachments";
 import { ControlledChatComposer } from "../../../chat/components/controlled-chat-composer";
 import { ChatWelcomeView } from "../../../chat/components/chat/chat-welcome-view";
 import { ToolActivity } from "../../../chat/components/part/tool-activity";
@@ -19,33 +23,37 @@ import "../../app/create/preview/preview.css";
 const BaseNewChat = ({ onSelect }: { readonly onSelect: () => void }) => {
   const { setOpenMobile } = native.useSidebar();
   return (
-    <native.Button
-      variant="outline"
-      className="justify-start"
-      onClick={() => {
-        onSelect();
-        setOpenMobile(false);
-      }}
-    >
-      <PreviewIcon name="plus" />
-      New chat
-    </native.Button>
+    <native.SidebarMenuItem>
+      <native.SidebarMenuButton
+        aria-label="New chat"
+        className="mt-4"
+        onClick={() => {
+          onSelect();
+          setOpenMobile(false);
+        }}
+      >
+        <PreviewIcon name="plus" />
+        <span>New chat</span>
+      </native.SidebarMenuButton>
+    </native.SidebarMenuItem>
   );
 };
 const RadixNewChat = ({ onSelect }: { readonly onSelect: () => void }) => {
   const { setOpenMobile } = nativeRadix.useSidebar();
   return (
-    <nativeRadix.Button
-      variant="outline"
-      className="justify-start"
-      onClick={() => {
-        onSelect();
-        setOpenMobile(false);
-      }}
-    >
-      <PreviewIcon name="plus" />
-      New chat
-    </nativeRadix.Button>
+    <nativeRadix.SidebarMenuItem>
+      <nativeRadix.SidebarMenuButton
+        aria-label="New chat"
+        className="mt-4"
+        onClick={() => {
+          onSelect();
+          setOpenMobile(false);
+        }}
+      >
+        <PreviewIcon name="plus" />
+        <span>New chat</span>
+      </nativeRadix.SidebarMenuButton>
+    </nativeRadix.SidebarMenuItem>
   );
 };
 
@@ -93,8 +101,12 @@ export const ChatPreview = () => {
   const {
     Button,
     SidebarProvider,
-    Sidebar,
     SidebarTrigger,
+    SidebarMenu,
+    SidebarMenuItem,
+    SidebarMenuButton,
+    AttachmentActions,
+    AttachmentAction,
     CodeBlock,
     CodeBlockHeader,
     CodeBlockTitle,
@@ -104,15 +116,8 @@ export const ChatPreview = () => {
     InputGroup,
     InputGroupAddon,
     InputGroupButton,
-    Message,
-    MessageContent,
     Bubble,
     BubbleContent,
-    Attachment,
-    AttachmentMedia,
-    AttachmentContent,
-    AttachmentTitle,
-    AttachmentDescription,
     MessageScrollerProvider,
     MessageScroller,
     MessageScrollerViewport,
@@ -220,19 +225,26 @@ export const ChatPreview = () => {
         sendIcon={<PreviewIcon name="up" />}
         attachments={
           hasAttachments && (
-            <InputGroupAddon align="block-start">
-              <PreviewIcon name="file" />
-              <span className="text-xs">project-notes.md</span>
-              <InputGroupButton
-                aria-label="Remove sample attachment"
-                size="icon-xs"
-                onClick={() => {
-                  setAttached(false);
-                }}
-              >
-                <PreviewIcon name="close" />
-              </InputGroupButton>
-            </InputGroupAddon>
+            <ComposerAttachments primitives={{ InputGroupAddon }}>
+              <AttachmentCardView
+                primitives={ui}
+                title="project-notes.md"
+                media={<PreviewIcon name="file" />}
+                actions={
+                  <AttachmentActions>
+                    <AttachmentAction
+                      aria-label="Remove sample attachment"
+                      type="button"
+                      onClick={() => {
+                        setAttached(false);
+                      }}
+                    >
+                      <PreviewIcon name="close" />
+                    </AttachmentAction>
+                  </AttachmentActions>
+                }
+              />
+            </ComposerAttachments>
           )
         }
         tools={
@@ -315,49 +327,66 @@ export const ChatPreview = () => {
         data-icons={preset.iconLibrary}
         data-mode={mode}
       >
-        <Sidebar side={direction === "rtl" ? "right" : "left"} dir={direction}>
-          <div className="flex h-full flex-col gap-5 p-4">
-            <div className="flex items-center gap-2 px-2 py-2 font-semibold">
-              <PreviewIcon name="chat" />
-              ChatJS
-            </div>
-            <NewChat
-              onSelect={() => {
-                selectScene("preview");
-                setMessages([]);
-                setDraft("");
-                setAttached(false);
-                setNotice("Started a new preview conversation.");
-              }}
-            />
-            <div className="flex flex-col gap-1">
-              <span className="text-muted-foreground px-2 text-xs">Today</span>
-              <Button variant="secondary" className="justify-start">
-                Building something good
-              </Button>
-              <Button
-                variant="ghost"
-                className="justify-start"
-                onClick={() => {
-                  setNotice("This preview keeps one sample conversation.");
+        <ChatSidebarView
+          primitives={ui}
+          direction={direction}
+          header={
+            <SidebarMenu>
+              <div className="flex items-center gap-2 px-2 py-2 font-semibold">
+                <PreviewIcon name="chat" />
+                <span className="group-data-[collapsible=icon]:hidden">
+                  ChatJS
+                </span>
+              </div>
+              <NewChat
+                onSelect={() => {
+                  selectScene("preview");
+                  setMessages([]);
+                  setDraft("");
+                  setAttached(false);
+                  setNotice("Started a new preview conversation.");
                 }}
-              >
-                Weekend reading list
-              </Button>
-            </div>
-            <div className="mt-auto flex items-center gap-3 px-2">
-              <div className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-full text-xs font-medium">
+              />
+            </SidebarMenu>
+          }
+          footer={
+            <div className="flex items-center gap-3 px-2">
+              <div className="bg-primary text-primary-foreground flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-medium">
                 YO
               </div>
-              <div>
+              <div className="group-data-[collapsible=icon]:hidden">
                 <p className="font-medium">Your workspace</p>
                 <p className="text-muted-foreground text-xs">
                   Personal account
                 </p>
               </div>
             </div>
-          </div>
-        </Sidebar>
+          }
+        >
+          <SidebarMenu>
+            <span className="text-muted-foreground px-2 text-xs">Today</span>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                isActive
+                onClick={() => {
+                  selectScene("preview-02");
+                  setMessages([]);
+                }}
+              >
+                Building something good
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => {
+                  setNotice("This preview keeps one sample conversation.");
+                }}
+              >
+                Weekend reading list
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </ChatSidebarView>
         <main className="@container flex min-w-0 flex-1 flex-col">
           <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b px-4 sm:px-6">
             <div className="flex min-w-0 items-center gap-2">
@@ -525,99 +554,83 @@ export const ChatPreview = () => {
                         )}
                         {view === "Conversation" && (
                           <div className="flex flex-col gap-7">
-                            <Message align="end">
-                              <MessageContent>
-                                <Bubble variant="muted">
-                                  <BubbleContent>
-                                    Help me build a small app people will love.
-                                  </BubbleContent>
-                                </Bubble>
-                              </MessageContent>
-                            </Message>
-                            <Message align="start">
-                              <MessageContent>
-                                <Bubble variant="ghost">
-                                  <BubbleContent className="flex flex-col gap-4">
-                                    <h1 className="font-heading text-xl font-semibold tracking-tight">
-                                      A small start. A great experience.
-                                    </h1>
-                                    <p>
-                                      Start with one useful conversation. Keep
-                                      the interface clear, let people bring
-                                      their context, and make every interaction
-                                      feel considered.
-                                    </p>
-                                    <div className="grid gap-3 sm:grid-cols-2">
-                                      <div className="rounded-lg border p-4">
-                                        <p className="font-medium">
-                                          Make it personal
-                                        </p>
-                                        <p className="text-muted-foreground mt-1 text-sm">
-                                          Your colors, your typography, your way
-                                          of working.
-                                        </p>
-                                      </div>
-                                      <div className="rounded-lg border p-4">
-                                        <p className="font-medium">
-                                          Keep it simple
-                                        </p>
-                                        <p className="text-muted-foreground mt-1 text-sm">
-                                          A focused workspace that gets out of
-                                          the way.
-                                        </p>
-                                      </div>
+                            <ChatMessageView author="user" primitives={ui}>
+                              <Bubble variant="muted">
+                                <BubbleContent>
+                                  Help me build a small app people will love.
+                                </BubbleContent>
+                              </Bubble>
+                            </ChatMessageView>
+                            <ChatMessageView author="assistant" primitives={ui}>
+                              <Bubble variant="ghost">
+                                <BubbleContent className="flex flex-col gap-4">
+                                  <h1 className="font-heading text-xl font-semibold tracking-tight">
+                                    A small start. A great experience.
+                                  </h1>
+                                  <p>
+                                    Start with one useful conversation. Keep the
+                                    interface clear, let people bring their
+                                    context, and make every interaction feel
+                                    considered.
+                                  </p>
+                                  <div className="grid gap-3 sm:grid-cols-2">
+                                    <div className="rounded-lg border p-4">
+                                      <p className="font-medium">
+                                        Make it personal
+                                      </p>
+                                      <p className="text-muted-foreground mt-1 text-sm">
+                                        Your colors, your typography, your way
+                                        of working.
+                                      </p>
                                     </div>
-                                    <ToolActivity
-                                      primitives={ui}
-                                      title="Project outline ready"
-                                      state="output-available"
-                                      icon={<PreviewIcon name="check" />}
-                                    >
-                                      <ol className="text-muted-foreground mt-3 flex list-inside list-decimal flex-col gap-2">
-                                        <li>Choose a visual direction</li>
-                                        <li>Connect your model provider</li>
-                                        <li>Ship your first conversation</li>
-                                      </ol>
-                                    </ToolActivity>
-                                    <CodeBlock>
-                                      <CodeBlockHeader>
-                                        <CodeBlockTitle>
-                                          terminal
-                                        </CodeBlockTitle>
-                                        <CodeBlockActions>
-                                          <CodeBlockCopyButton value="bunx @chat-js/cli@beta create my-chat" />
-                                        </CodeBlockActions>
-                                      </CodeBlockHeader>
-                                      <CodeBlockContent>
-                                        bunx @chat-js/cli@beta create my-chat
-                                      </CodeBlockContent>
-                                    </CodeBlock>
-                                    <div className="text-muted-foreground flex items-center gap-2 text-xs">
-                                      <PreviewIcon name="check" />
-                                      <span>Ready when you are.</span>
+                                    <div className="rounded-lg border p-4">
+                                      <p className="font-medium">
+                                        Keep it simple
+                                      </p>
+                                      <p className="text-muted-foreground mt-1 text-sm">
+                                        A focused workspace that gets out of the
+                                        way.
+                                      </p>
                                     </div>
-                                  </BubbleContent>
-                                </Bubble>
-                              </MessageContent>
-                            </Message>
+                                  </div>
+                                  <ToolActivity
+                                    primitives={ui}
+                                    title="Project outline ready"
+                                    state="output-available"
+                                    icon={<PreviewIcon name="check" />}
+                                  >
+                                    <ol className="text-muted-foreground mt-3 flex list-inside list-decimal flex-col gap-2">
+                                      <li>Choose a visual direction</li>
+                                      <li>Connect your model provider</li>
+                                      <li>Ship your first conversation</li>
+                                    </ol>
+                                  </ToolActivity>
+                                  <CodeBlock>
+                                    <CodeBlockHeader>
+                                      <CodeBlockTitle>terminal</CodeBlockTitle>
+                                      <CodeBlockActions>
+                                        <CodeBlockCopyButton value="bunx @chat-js/cli@beta create my-chat" />
+                                      </CodeBlockActions>
+                                    </CodeBlockHeader>
+                                    <CodeBlockContent>
+                                      bunx @chat-js/cli@beta create my-chat
+                                    </CodeBlockContent>
+                                  </CodeBlock>
+                                  <div className="text-muted-foreground flex items-center gap-2 text-xs">
+                                    <PreviewIcon name="check" />
+                                    <span>Ready when you are.</span>
+                                  </div>
+                                </BubbleContent>
+                              </Bubble>
+                            </ChatMessageView>
                             {uploads && (
-                              <Message align="end">
-                                <MessageContent>
-                                  <Attachment>
-                                    <AttachmentMedia>
-                                      <PreviewIcon name="file" />
-                                    </AttachmentMedia>
-                                    <AttachmentContent>
-                                      <AttachmentTitle>
-                                        project-notes.md
-                                      </AttachmentTitle>
-                                      <AttachmentDescription>
-                                        4 KB · sample attachment
-                                      </AttachmentDescription>
-                                    </AttachmentContent>
-                                  </Attachment>
-                                </MessageContent>
-                              </Message>
+                              <ChatMessageView author="user" primitives={ui}>
+                                <AttachmentCardView
+                                  primitives={ui}
+                                  title="project-notes.md"
+                                  media={<PreviewIcon name="file" />}
+                                />
+                              </ChatMessageView>
                             )}
                           </div>
                         )}
@@ -629,45 +642,33 @@ export const ChatPreview = () => {
                           messageId={`preview-${index}`}
                           scrollAnchor
                         >
-                          <Message align="end">
-                            <MessageContent>
-                              {message.attached && (
-                                <Attachment>
-                                  <AttachmentMedia>
-                                    <PreviewIcon name="file" />
-                                  </AttachmentMedia>
-                                  <AttachmentContent>
-                                    <AttachmentTitle>
-                                      project-notes.md
-                                    </AttachmentTitle>
-                                    <AttachmentDescription>
-                                      4 KB · sample attachment
-                                    </AttachmentDescription>
-                                  </AttachmentContent>
-                                </Attachment>
-                              )}
-                              {message.text && (
-                                <Bubble variant="muted">
-                                  <BubbleContent>
-                                    <pre className="font-sans whitespace-pre-wrap">
-                                      {message.text}
-                                    </pre>
-                                  </BubbleContent>
-                                </Bubble>
-                              )}
-                            </MessageContent>
-                          </Message>
-                          <Message align="start">
-                            <MessageContent>
-                              <Bubble variant="ghost">
+                          <ChatMessageView author="user" primitives={ui}>
+                            {message.attached && (
+                              <AttachmentCardView
+                                primitives={ui}
+                                title="project-notes.md"
+                                media={<PreviewIcon name="file" />}
+                              />
+                            )}
+                            {message.text && (
+                              <Bubble variant="muted">
                                 <BubbleContent>
-                                  This is a local preview. Your generated app
-                                  connects to {installation.gateway} to answer
-                                  your messages.
+                                  <pre className="font-sans whitespace-pre-wrap">
+                                    {message.text}
+                                  </pre>
                                 </BubbleContent>
                               </Bubble>
-                            </MessageContent>
-                          </Message>
+                            )}
+                          </ChatMessageView>
+                          <ChatMessageView author="assistant" primitives={ui}>
+                            <Bubble variant="ghost">
+                              <BubbleContent>
+                                This is a local preview. Your generated app
+                                connects to {installation.gateway} to answer
+                                your messages.
+                              </BubbleContent>
+                            </Bubble>
+                          </ChatMessageView>
                         </MessageScrollerItem>
                       ))}
                     </MessageScrollerContent>

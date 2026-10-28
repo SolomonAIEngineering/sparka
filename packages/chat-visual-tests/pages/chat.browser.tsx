@@ -51,6 +51,12 @@ test("conversation", async () => {
     .element(page.getByText("invoices_account_status_due_idx"))
     .toBeVisible();
   await expect
+    .poll(() => document.querySelector('[data-role="user"]'))
+    .not.toBeNull();
+  await expect
+    .poll(() => document.querySelector('[data-role="assistant"]'))
+    .not.toBeNull();
+  await expect
     .element(page.getByRole("textbox", { name: "Message" }))
     .toBeVisible();
 });

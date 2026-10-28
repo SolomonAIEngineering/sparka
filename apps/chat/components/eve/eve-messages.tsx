@@ -8,6 +8,7 @@ import type { JSX as ReactJSX, ReactNode } from "react";
 import { toast } from "sonner";
 
 import { Message, MessageContent } from "@/components/ui/message";
+import { ChatMessageView } from "../chat-message-view";
 import { MessageScrollerItem } from "@/components/ui/message-scroller";
 import { MessageActionsView } from "@/components/message-actions-view";
 import { RetryButtonView } from "@/components/retry-button-view";
@@ -317,38 +318,34 @@ const EveMessageRow = ({
     );
   }
   return (
-    <Message
-      className="py-1"
-      data-eve-message-id={message.id}
-      data-role={message.role}
-      align="start"
+    <ChatMessageView
+      messageId={message.id}
+      author={message.role}
+      primitives={{ Message, MessageContent }}
+      actions={actions}
+      followUp={isLast && !isReadonly && !actionsDisabled && suggestions}
     >
-      <MessageContent>
-        <span className="sr-only">Assistant</span>
-        {message.parts
-          .filter((part: ReadonlyEveMessagePart) => part.type !== "step-start")
-          .map((part): React.JSX.Element => (
-            <EveMessagePart
-              inputDisabled={responseDisabled(
-                isReadonly,
-                disabled,
-                inputDisabled
-              )}
-              isReadonly={isReadonly}
-              key={nextPartKey(part)}
-              messageId={message.id}
-              part={part}
-              respond={respond}
-              previewDocument={
-                part.type === "dynamic-tool" &&
-                part.toolCallId === latestDocumentCallId
-              }
-            />
-          ))}
-        {actions}
-        {isLast && !isReadonly && !actionsDisabled && suggestions}
-      </MessageContent>
-    </Message>
+      {message.parts
+        .filter((part: ReadonlyEveMessagePart) => part.type !== "step-start")
+        .map((part): React.JSX.Element => (
+          <EveMessagePart
+            inputDisabled={responseDisabled(
+              isReadonly,
+              disabled,
+              inputDisabled
+            )}
+            isReadonly={isReadonly}
+            key={nextPartKey(part)}
+            messageId={message.id}
+            part={part}
+            respond={respond}
+            previewDocument={
+              part.type === "dynamic-tool" &&
+              part.toolCallId === latestDocumentCallId
+            }
+          />
+        ))}
+    </ChatMessageView>
   );
 };
 

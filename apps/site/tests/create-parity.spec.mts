@@ -81,9 +81,22 @@ for (const base of ["base", "radix"] as const) {
         });
         await page.getByRole("button", { name: "Attach sample file" }).click();
         await expect(send).toBeEnabled();
+        await page
+          .getByRole("button", { name: "Remove sample attachment" })
+          .click();
+        await expect(send).toBeDisabled();
+        await page.getByRole("button", { name: "Attach sample file" }).click();
         await send.click();
         await expect(
-          page.getByText("project-notes.md", { exact: true })
+          page
+            .locator('[data-role="user"]')
+            .getByText("project-notes.md", { exact: true })
+        ).toBeVisible();
+        await expect(
+          page
+            .locator('[data-role="assistant"]')
+            .last()
+            .getByText("This is a local preview.", { exact: false })
         ).toBeVisible();
         await expect(
           page.getByRole("button", { name: "Remove sample attachment" })
@@ -111,6 +124,19 @@ for (const base of ["base", "radix"] as const) {
           name: "Toggle Sidebar",
           exact: true,
         });
+        if (width === 1000) {
+          await toggle.click();
+          await expect(
+            page.locator('[data-slot="sidebar"][data-state="collapsed"]')
+          ).toBeVisible();
+          await expect(
+            page.getByRole("button", { name: "Weekend reading list" })
+          ).toBeHidden();
+          await toggle.click();
+          await expect(
+            page.getByRole("button", { name: "Weekend reading list" })
+          ).toBeVisible();
+        }
         if (width === 390) {
           await toggle.click();
           await expect(page.getByRole("dialog")).toBeVisible();

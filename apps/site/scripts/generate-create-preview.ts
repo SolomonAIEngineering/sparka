@@ -15,6 +15,7 @@ const destination = fileURLToPath(
   new URL("../components/create-preview/ui/", import.meta.url)
 );
 const names = [
+  "scroll-area",
   "sidebar",
   "sheet",
   "separator",

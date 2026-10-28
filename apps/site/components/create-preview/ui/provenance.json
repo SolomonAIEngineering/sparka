@@ -64,6 +64,11 @@
       "sha256": "b57f3c9921ceb0695cb8164c7be8ce229519f2b485b95923bb980a5e39e11c72",
       "adaptedSha256": "b57f3c9921ceb0695cb8164c7be8ce229519f2b485b95923bb980a5e39e11c72"
     },
+    "base/scroll-area.tsx": {
+      "source": "registry/bases/base/ui/scroll-area.tsx",
+      "sha256": "7e49845827447091a6493473779a05ba45cb8302e3703a6f9e4225dd6315cce2",
+      "adaptedSha256": "7e49845827447091a6493473779a05ba45cb8302e3703a6f9e4225dd6315cce2"
+    },
     "base/separator.tsx": {
       "source": "registry/bases/base/ui/separator.tsx",
       "sha256": "9a80ff8c110e0c55489509f4f82ebcc929c0174b59544047147b7134f86a54e7",
@@ -153,6 +158,11 @@
       "source": "registry/bases/radix/ui/message.tsx",
       "sha256": "b57f3c9921ceb0695cb8164c7be8ce229519f2b485b95923bb980a5e39e11c72",
       "adaptedSha256": "b57f3c9921ceb0695cb8164c7be8ce229519f2b485b95923bb980a5e39e11c72"
+    },
+    "radix/scroll-area.tsx": {
+      "source": "registry/bases/radix/ui/scroll-area.tsx",
+      "sha256": "088a0379c48cf5c856b7e182ebabd7ecc41b0dd298fc9cf794b34f718c765f74",
+      "adaptedSha256": "088a0379c48cf5c856b7e182ebabd7ecc41b0dd298fc9cf794b34f718c765f74"
     },
     "radix/separator.tsx": {
       "source": "registry/bases/radix/ui/separator.tsx",
