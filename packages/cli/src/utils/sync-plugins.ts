@@ -237,7 +237,7 @@ const assertUniqueContributions = (
     }
     for (const [present, label] of [
       [plugin.authentication, "authentication"],
-      [plugin.client?.authentication, "authentication UI"],
+      [plugin.authenticationUi, "authentication UI"],
       [plugin.navigation, "modified navigation"],
       [plugin.billing, "usage billing"],
       [plugin.client?.modelVisibility, "model visibility"],
@@ -309,7 +309,7 @@ const renderPluginRegistrations = (
   const chat = plugins.filter((plugin) => plugin.chat);
   const chatUi = plugins.filter((plugin) => plugin.client?.chat);
   const authentication = plugins.find((plugin) => plugin.authentication);
-  const authUi = plugins.filter((plugin) => plugin.client?.authentication);
+  const authUi = plugins.find((plugin) => plugin.authenticationUi);
   const navigation = plugins.filter((plugin) => plugin.navigation);
   const contents = [
     [
@@ -320,9 +320,15 @@ export const installedAuth: AuthenticationIntegration = ${authentication ? "plug
     ],
     [
       "installed-auth-ui",
-      `${imports(authUi, "client")}
+      `${authUi ? `import { ${authUi.authenticationUi?.form} as pluginForm } from "@/plugins/${authUi.id}/auth-form";` : ""}
 import type { AuthenticationUi } from "@/lib/authentication-contracts";
-export const authenticationUi: AuthenticationUi = ${authUi.length > 0 ? "plugin0().authentication" : "{ Form: ({ children }) => children, signOut: () => Promise.resolve(false) }"};`,
+export const AuthenticationForm: AuthenticationUi["Form"] = ${authUi ? "pluginForm" : "({ children }) => children"};`,
+    ],
+    [
+      "installed-sign-out",
+      `${authUi ? `import { ${authUi.authenticationUi?.signOut} as pluginSignOut } from "@/plugins/${authUi.id}/sign-out";` : ""}
+import type { AuthenticationUi } from "@/lib/authentication-contracts";
+export const signOutWithPlugin: AuthenticationUi["signOut"] = ${authUi ? "pluginSignOut" : "() => Promise.resolve(false)"};`,
     ],
     [
       "installed-navigation",

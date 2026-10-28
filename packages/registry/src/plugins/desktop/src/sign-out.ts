@@ -1,4 +1,4 @@
-import { isElectronRenderer } from "./electron-auth";
+import { isElectronRenderer } from "./bridge";
 
 export const signOutDesktop = async (): Promise<boolean> => {
   if (!isElectronRenderer()) {

@@ -1,4 +1,5 @@
 "use client";
+import { isElectronRenderer } from "./bridge";
 import { useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
@@ -8,7 +9,6 @@ import { SocialAuthProviders } from "@/components/auth-providers";
 import authClient from "@/lib/auth-client";
 import {
   buildSocialAuthRequest,
-  isElectronRenderer,
   isElectronTransferQuery,
 } from "./electron-auth";
 import { ElectronBrowserSignIn, ElectronTransferUser } from "./auth-ui";

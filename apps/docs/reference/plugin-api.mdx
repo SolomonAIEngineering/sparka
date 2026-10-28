@@ -18,7 +18,8 @@ Keep server and browser import graphs separate:
 | `billing.ts` | `UsageBilling` | Spending admission and transactional debits, safe for EVE and Next.js |
 | `auth-server.ts` | `AuthenticationIntegration` | Better Auth plugins, trusted origins, auth route matching |
 | `navigation.ts` | `() => boolean` | Whether core handles modified links as app navigation |
-| `client-plugin.ts` | `ChatClientPlugin` | Composer controls, settings, layout, uploads, model visibility, chat UI, account summary, authentication UI |
+| `auth-form.tsx`, `sign-out.ts` | `AuthenticationUi` | Authentication form wrapper and sign-out handler, imported independently |
+| `client-plugin.ts` | `ChatClientPlugin` | Composer controls, settings, layout, uploads, model visibility, chat UI, account summary |
 
 Keep `chat.ts` and `billing.ts` free of web routers and Next.js request helpers: native EVE loads this entrypoint too.
 
@@ -150,7 +151,7 @@ Follow-up Suggestions uses native EVE hooks for generation and the per-conversat
 
 Declare `authentication: { export: "desktopAuth" }` for an `AuthenticationIntegration` exported from `auth-server.ts`. Core adds its Better Auth `plugins` and `trustedOrigins`, and consults `isAuthRoute(url)` before redirecting page requests. Match routes narrowly: this predicate lets unauthenticated visitors reach the page and keeps signed-in users on authentication handoff pages. It does not replace endpoint authentication or authorize data access.
 
-Declare `client.authentication: true` and return an `authentication` object from your client factory. Its `Form` receives `mode: "login" | "register"` and the normal web form as `children`. Render the children when your integration does not apply. Its asynchronous `signOut()` returns `true` after handling sign-out, `false` to use core web sign-out, and rejects on failure. Core clears cached account data and navigates only after success.
+Declare `authenticationUi: { form: "DesktopAuthForm", signOut: "signOutDesktop" }` in the descriptor. Export the form from `auth-form.tsx` and the handler from `sign-out.ts`. Sync imports them independently, so signing out does not load the login form or layout. The form receives `mode: "login" | "register"` and the normal web form as `children`. Render the children when your integration does not apply. The asynchronous sign-out handler returns `true` after handling sign-out, `false` to use core web sign-out, and rejects on failure. Core clears cached account data and navigates only after success.
 
 Declare `navigation: { export: "desktopNavigation" }` for a function exported from `navigation.ts`. Return `true` when core should handle modified internal links as normal app navigation. With no contribution, core preserves browser modifier behavior. Keep this entry independent of auth UI and client factories to avoid an import cycle through the shared link component.
 

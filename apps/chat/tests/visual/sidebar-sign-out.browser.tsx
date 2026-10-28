@@ -11,12 +11,12 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 
 import "./sandbox.css";
 
-vi.mock("@/composition/generated/installed-auth-ui", () => ({
-  authenticationUi: { signOut: signOutDesktop },
+vi.mock("@/composition/generated/installed-sign-out", () => ({
+  signOutWithPlugin: signOutDesktop,
 }));
 const auth = vi.hoisted(() => ({ electron: false, signOut: vi.fn() }));
 vi.mock("@/lib/auth-client", () => ({ default: auth }));
-vi.mock("@/plugins/desktop/electron-auth", () => ({
+vi.mock("@/plugins/desktop/bridge", () => ({
   isElectronRenderer: (): boolean => auth.electron,
 }));
 vi.mock("@/plugins/credits/use-credits", () => ({

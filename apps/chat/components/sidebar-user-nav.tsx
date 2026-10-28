@@ -41,7 +41,7 @@ import { installedAccountSummaries } from "@/composition/generated/installed-acc
 import authClient from "@/lib/auth-client";
 
 import { cn } from "@/lib/utils";
-import { authenticationUi } from "@/composition/generated/installed-auth-ui";
+import { signOutWithPlugin } from "@/composition/generated/installed-sign-out";
 
 import { signOutAndNavigate } from "@/lib/sign-out";
 
@@ -203,7 +203,7 @@ export const SidebarUserNav = (): ReactJSX.Element => {
                         toast.error("Unable to sign out. Try again.");
                       },
                       signOut: async () => {
-                        if (!(await authenticationUi.signOut())) {
+                        if (!(await signOutWithPlugin())) {
                           await authClient.signOut({
                             fetchOptions: { throw: true },
                           });

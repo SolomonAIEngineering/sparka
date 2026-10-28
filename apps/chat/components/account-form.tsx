@@ -1,6 +1,6 @@
 "use client";
 import { useSearchParams } from "next/navigation";
-import { authenticationUi } from "@/composition/generated/installed-auth-ui";
+import { AuthenticationForm } from "@/composition/generated/installed-auth-ui";
 import { AuthFormView } from "./auth-form-view";
 import { SocialAuthProviders } from "./auth-providers";
 
@@ -13,10 +13,10 @@ export const AccountForm = ({
 }) => {
   const query = Object.fromEntries(useSearchParams().entries());
   return (
-    <authenticationUi.Form mode={mode}>
+    <AuthenticationForm mode={mode}>
       <AuthFormView mode={mode} query={query} className={className}>
         <SocialAuthProviders callbackURL={query.returnTo} query={query} />
       </AuthFormView>
-    </authenticationUi.Form>
+    </AuthenticationForm>
   );
 };

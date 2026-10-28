@@ -52,7 +52,7 @@ Desktop is enabled by installation. There is no `desktopApp.enabled` flag.
 | `plugins/desktop/device-login-page.tsx` | Transfer completion and error states |
 | `plugins/desktop/sign-out.ts` | Native sign-out and session refresh |
 | `plugins/desktop/navigation.ts` | Modified-link handling in native windows |
-| `plugins/desktop/protocol.ts`, `bridge.ts` | Shared protocol settings and renderer bridge types |
+| `plugins/desktop/protocol.ts`, `bridge.ts` | Shared protocol settings, renderer bridge types, and renderer detection |
 | `app/(auth)/device-login/page.tsx` | Thin route adapter |
 | `electron/` | Companion source and build tooling |
 
@@ -62,7 +62,7 @@ Repository contributors edit the canonical web plugin in `packages/registry/src/
 
 Desktop provides server authentication, an authentication form wrapper and sign-out handler, modified-link navigation, and a layout component. These are explicit contracts in the [Plugin API](../reference/plugin-api). Each authentication or navigation slot accepts one provider. The layout placement is shared with other plugins.
 
-The modified-link contribution is imported separately from the client factory so ordinary links do not load the authentication form graph. Core retains its regular web authentication and form presentation.
+Navigation and sign-out import renderer detection from the dependency-free bridge module. The form and sign-out handler have separate generated imports; neither navigation nor sign-out imports the client factory, login form, or session overlay. The client factory owns only the layout contribution. Core retains its regular web authentication and form presentation.
 
 ## Without Desktop
 

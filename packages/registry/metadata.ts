@@ -165,6 +165,9 @@ const pluginDefinitionBase = z.object({
   chat: z.object({ export: identifier }).optional(),
   billing: z.object({ export: identifier }).optional(),
   authentication: z.object({ export: identifier }).optional(),
+  authenticationUi: z
+    .object({ form: identifier, signOut: identifier })
+    .optional(),
   navigation: z.object({ export: identifier }).optional(),
   server: z
     .object({
@@ -181,7 +184,6 @@ const pluginDefinitionBase = z.object({
       chat: z.literal(true).optional(),
       layout: z.literal(true).optional(),
       accountSummary: z.literal(true).optional(),
-      authentication: z.literal(true).optional(),
       uploads: z.literal(true).optional(),
       modelVisibility: z.literal(true).optional(),
     })

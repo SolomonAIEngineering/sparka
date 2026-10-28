@@ -46,6 +46,7 @@
     "composition/generated/installed-model-visibility.ts",
     "composition/generated/installed-navigation.ts",
     "composition/generated/installed-routers.ts",
+    "composition/generated/installed-sign-out.ts",
     "composition/generated/installed-tools.ts",
     "composition/generated/installed-uploads.ts",
     "composition/generated/installed.ts",

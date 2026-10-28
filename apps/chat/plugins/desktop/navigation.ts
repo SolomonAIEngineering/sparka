@@ -1,3 +1,3 @@
-import { isElectronRenderer } from "./electron-auth";
+import { isElectronRenderer } from "./bridge";
 
 export const desktopNavigation = (): boolean => isElectronRenderer();

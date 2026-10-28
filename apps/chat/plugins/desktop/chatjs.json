@@ -18,13 +18,16 @@
     "app/(auth)/device-login/page.tsx"
   ],
   "authentication": { "export": "desktopAuth" },
+  "authenticationUi": {
+    "form": "DesktopAuthForm",
+    "signOut": "signOutDesktop"
+  },
   "navigation": { "export": "desktopNavigation" },
   "client": {
     "export": "desktopClient",
     "composerControls": [],
     "settingsItems": [],
-    "layout": true,
-    "authentication": true
+    "layout": true
   },
   "contractVersion": 2,
   "uiBase": "base"

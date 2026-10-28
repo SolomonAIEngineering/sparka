@@ -40,3 +40,6 @@ declare global {
     signOut?: () => Promise<void>;
   }
 }
+
+export const isElectronRenderer = (): boolean =>
+  typeof window !== "undefined" && typeof window.requestAuth === "function";

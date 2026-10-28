@@ -26,10 +26,8 @@ vi.mock("@/plugins/credits/use-credits", () => ({
   useGetCredits: () => useContext(Balance),
 }));
 vi.mock("@/lib/auth-client", () => ({ default: {} }));
-vi.mock("@/composition/generated/installed-auth-ui", () => ({
-  authenticationUi: {
-    signOut: async (): Promise<boolean> => await Promise.resolve(false),
-  },
+vi.mock("@/composition/generated/installed-sign-out", () => ({
+  signOutWithPlugin: async (): Promise<boolean> => await Promise.resolve(false),
 }));
 vi.mock("@/composition/generated/installed-navigation", () => ({
   handleModifiedNavigation: () => false,

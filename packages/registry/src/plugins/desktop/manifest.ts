@@ -25,10 +25,10 @@ const desktopDefinition = pluginDefinitionSchema.parse({
   files: desktopFiles,
   authentication: { export: "desktopAuth" },
   navigation: { export: "desktopNavigation" },
+  authenticationUi: { form: "DesktopAuthForm", signOut: "signOutDesktop" },
   client: {
     export: "desktopClient",
     layout: true,
-    authentication: true,
   },
 });
 const desktopItem: RegistryItem = {

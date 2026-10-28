@@ -8,9 +8,6 @@ const ELECTRON_APP_SCHEME = config.appPrefix;
 // @better-auth/electron sends this synthetic Origin for the current protocol.
 const ELECTRON_TRUSTED_ORIGINS = [`${ELECTRON_APP_SCHEME}:/`] as const;
 
-const isElectronRenderer = (): boolean =>
-  typeof window !== "undefined" && typeof window.requestAuth === "function";
-
 type SearchParamValue = string | readonly string[] | undefined;
 
 const toSearchParamRecord = (
@@ -75,7 +72,6 @@ const buildSocialAuthRequest = (
 export {
   ELECTRON_APP_SCHEME,
   ELECTRON_TRUSTED_ORIGINS,
-  isElectronRenderer,
   toSearchParamRecord,
   isElectronTransferQuery,
   buildSocialAuthRequest,

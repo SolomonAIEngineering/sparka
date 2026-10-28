@@ -951,8 +951,8 @@ test.each([
   },
   {
     label: "authentication UI",
-    entry: "client-plugin.ts",
-    contribution: { client: { export: "client", authentication: true } },
+    entry: "auth-form.tsx",
+    contribution: { authenticationUi: { form: "Form", signOut: "signOut" } },
   },
   {
     label: "modified navigation",
@@ -990,3 +990,55 @@ test.each([
     expect(await readFile(file, "utf-8")).toBe(before);
   }
 );
+
+test("sign-out defaults to web and stays independent of auth forms and layout", async () => {
+  const root = await fixture();
+  await initializePluginUi(root);
+  expect(
+    await runRegistration(
+      root,
+      "sign-out",
+      "assert.equal(await registration.signOutWithPlugin(), false);"
+    )
+  ).toEqual({ exitCode: 0, stderr: "" });
+  const directory = path.join(root, "plugins", "auth-fixture");
+  await mkdir(directory, { recursive: true });
+  await Promise.all([
+    writeFile(
+      path.join(directory, "auth-form.tsx"),
+      'import "missing-form-dependency"; export const Form = () => null;'
+    ),
+    writeFile(
+      path.join(directory, "client-plugin.ts"),
+      'import "missing-layout-dependency"; export const client = () => ({});'
+    ),
+    writeFile(
+      path.join(directory, "sign-out.ts"),
+      "export const signOut = () => Promise.resolve(true);"
+    ),
+    writeFile(
+      path.join(directory, "chatjs.json"),
+      JSON.stringify({
+        contractVersion: 2,
+        uiBase: "base",
+        id: "auth-fixture",
+        kind: "plugin",
+        files: [
+          "plugins/auth-fixture/auth-form.tsx",
+          "plugins/auth-fixture/sign-out.ts",
+          "plugins/auth-fixture/client-plugin.ts",
+        ],
+        client: { export: "client", layout: true },
+        authenticationUi: { form: "Form", signOut: "signOut" },
+      })
+    ),
+  ]);
+  await syncPlugins(root);
+  expect(
+    await runRegistration(
+      root,
+      "sign-out",
+      "assert.equal(await registration.signOutWithPlugin(), true);"
+    )
+  ).toEqual({ exitCode: 0, stderr: "" });
+});
