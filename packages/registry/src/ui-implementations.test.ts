@@ -58,3 +58,18 @@ test.each(["base", "radix"] as const)(
     expect(empty).toContain("Empty native implementation");
   }
 );
+
+test.each(["base", "radix"] as const)(
+  "shared source is never translated for %s",
+  async (base) => {
+    const source =
+      'import { Controller } from "react-hook-form"; export const Form = () => <Controller render={field} />;';
+    const output = await selectUiSources(
+      new Map([["components/form.tsx", source]]),
+      base,
+      async () =>
+        await Promise.reject(new Error("Shared source must not load a variant"))
+    );
+    expect(output.get("components/form.tsx")).toBe(source);
+  }
+);

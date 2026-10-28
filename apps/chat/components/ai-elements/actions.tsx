@@ -1,12 +1,8 @@
 "use client";
 
+import { Hint } from "@/components/hint";
 import { Button } from "@/components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import type { ComponentProps } from "react";
 import React from "react";
 import { cn } from "@/lib/utils";
@@ -58,12 +54,9 @@ const Action = ({
   if (typeof tooltip === "string" && tooltip !== "") {
     return (
       <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger  render={button} />
-          <TooltipContent>
-            <p>{tooltip}</p>
-          </TooltipContent>
-        </Tooltip>
+        <Hint trigger={button}>
+          <p>{tooltip}</p>
+        </Hint>
       </TooltipProvider>
     );
   }

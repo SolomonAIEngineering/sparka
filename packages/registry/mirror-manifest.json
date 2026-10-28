@@ -142,6 +142,7 @@
     "plugins/mcp/ui/mcp-connect-dialog.tsx",
     "plugins/mcp/ui/mcp-create-dialog.tsx",
     "plugins/mcp/ui/mcp-details-page.tsx",
+    "plugins/mcp/ui/transport-select.tsx",
     "plugins/model-preferences/apply-model-preferences.ts",
     "plugins/model-preferences/chatjs.json",
     "plugins/model-preferences/client-plugin.ts",

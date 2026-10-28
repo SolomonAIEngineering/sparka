@@ -89,7 +89,7 @@ test("native registry variants preserve item identity, dependencies, and descrip
   }
 });
 
-test("Radix registry source converts native composition without rewriting unrelated source", async () => {
+test("Radix registry selects native boundaries and preserves shared compositions verbatim", async () => {
   const item = registry.items.find((entry) => entry.name === "sharing");
   if (!item) {
     throw new Error(
@@ -126,9 +126,12 @@ test("Radix registry source converts native composition without rewriting unrela
   const radixButton = radix.files?.find((file) =>
     file.path.endsWith("share-button.tsx")
   );
-  expect(baseButton?.content).toContain("render={triggerButton}");
-  expect(radixButton?.content).toContain("asChild");
-  expect(radixButton?.content).not.toContain("render={triggerButton}");
+  expect(baseButton?.content).toContain("TriggerButton");
+  expect(radixButton?.content).toBe(baseButton?.content);
+  const nativeMenu = radix.files?.find((file) =>
+    file.path.endsWith("share-menu-surface.tsx")
+  );
+  expect(nativeMenu?.content).toContain("asChild");
   for (const file of files.filter((entry) => !entry.path.endsWith(".tsx"))) {
     expect(
       radix.files?.find((entry) => entry.path === file.path)?.content

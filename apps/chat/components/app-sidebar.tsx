@@ -1,3 +1,4 @@
+import { SidebarLink } from "@/components/navigation-links";
 import {
   PluginSidebar,
   PluginSidebarHeader,
@@ -16,12 +17,10 @@ import {
   SidebarGroup,
   SidebarHeader,
   SidebarMenu,
-  SidebarMenuButton,
   SidebarMenuItem,
   SidebarSeparator,
 } from "@/components/ui/sidebar";
 
-import { InternalLink } from "@/components/internal-link";
 import { NewChatButton } from "@/components/new-chat-button";
 import type { JSX as ReactJSX } from "react";
 import { SidebarTopRow } from "@/components/sidebar-top-row";
@@ -83,17 +82,16 @@ export const AppSidebar = (): React.JSX.Element => (
         </Suspense>
         {modelSettingsItem && (modelSettingsItem.isVisible?.() ?? true) && (
           <SidebarMenuItem>
-            <SidebarMenuButton
+            <SidebarLink
               tooltip="Models"
-              render={
-                <InternalLink aria-label="Models" href={modelSettingsItem.href}>
-                  <Cpu className="size-4" />
-                  <span className="group-data-[collapsible=icon]:hidden">
-                    Models
-                  </span>
-                </InternalLink>
-              }
-            />
+              aria-label="Models"
+              href={modelSettingsItem.href}
+            >
+              <Cpu className="size-4" />
+              <span className="group-data-[collapsible=icon]:hidden">
+                Models
+              </span>
+            </SidebarLink>
           </SidebarMenuItem>
         )}
       </SidebarMenu>

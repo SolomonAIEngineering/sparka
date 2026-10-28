@@ -1,13 +1,9 @@
 "use client";
 
+import { Hint } from "@/components/hint";
 import type { ComponentProps, HTMLAttributes } from "react";
 import { Button } from "@/components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import type { LucideIcon } from "lucide-react";
 import React from "react";
 import { XIcon } from "lucide-react";
@@ -137,12 +133,9 @@ const ArtifactAction = ({
   if (typeof tooltip === "string" && tooltip !== "") {
     return (
       <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger  render={button} />
-          <TooltipContent>
-            <p>{tooltip}</p>
-          </TooltipContent>
-        </Tooltip>
+        <Hint trigger={button}>
+          <p>{tooltip}</p>
+        </Hint>
       </TooltipProvider>
     );
   }

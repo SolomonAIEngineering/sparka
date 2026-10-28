@@ -1,5 +1,8 @@
 "use client";
 
+import { Checkbox } from "@/components/ui/checkbox";
+import { ModelSelectionIndicator } from "@/components/model-selection-indicator";
+import { PopoverButton } from "@/components/popover-button";
 import { settingsItems } from "@/settings-items";
 import type { AppModelDefinition, AppModelId } from "@/lib/ai/app-models";
 import {
@@ -23,7 +26,6 @@ import { InternalLink } from "@/components/internal-link";
 import { Badge } from "@/components/ui/badge";
 
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 
 import {
   Command,
@@ -43,11 +45,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
 
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent } from "@/components/ui/popover";
 
 import type { SelectedModelCounts, SelectedModelValue } from "@/lib/ai/types";
 
@@ -209,13 +207,7 @@ const PureCommandItem = ({
     >
       <div className="flex min-w-0 flex-1 items-center gap-2.5">
         {showSelectionControl && (
-          <Checkbox
-            aria-hidden
-            tabIndex={-1}
-            readOnly
-            checked={isSelected}
-            className="pointer-events-none"
-          />
+          <ModelSelectionIndicator selected={isSelected} />
         )}
         <div className="shrink-0">
           <ModelSelectorLogo modelId={model.id} />
@@ -237,13 +229,9 @@ const PureCommandItem = ({
         {isSelected && onCountChange && count !== undefined && (
           <DropdownMenu>
             <DropdownMenuTrigger
-              render={
-                <button
-                  aria-label={`${count}×`}
-                  className="bg-primary/15 text-foreground hover:bg-primary/25 flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-xs font-semibold tabular-nums"
-                  type="button"
-                />
-              }
+              aria-label={`${count}×`}
+              className="bg-primary/15 text-foreground hover:bg-primary/25 flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-xs font-semibold tabular-nums"
+              type="button"
               onClick={stopEventPropagation}
               onMouseDown={stopEventPropagation}
             >
@@ -607,44 +595,37 @@ const PureModelSelector = ({
 
   return (
     <Popover onOpenChange={setOpen} open={open}>
-      <PopoverTrigger
-        render={
-          <Button
-            aria-expanded={open}
-            className={cn(
-              "flex w-fit justify-between gap-2 md:px-2",
-              className
-            )}
-            data-testid="model-selector"
-            variant="ghost"
-          >
-            <div className="flex items-center gap-2">
-              {selectedItem && (
-                <div className="shrink-0">
-                  <ModelSelectorLogo modelId={selectedItem.model.id} />
-                </div>
-              )}
-              <p className="inline-flex items-center gap-1.5 truncate">
-                {triggerLabel}
-                {selectedItem?.model.reasoning === true && reasoningConfig && (
-                  <span
-                    className="inline-flex shrink-0 items-center gap-1"
-                    title={reasoningConfig.description}
-                  >
-                    <reasoningConfig.icon className="text-muted-foreground h-3 w-3" />
-                  </span>
-                )}
-              </p>
+      <PopoverButton
+        aria-expanded={open}
+        className={cn("flex w-fit justify-between gap-2 md:px-2", className)}
+        data-testid="model-selector"
+        variant="ghost"
+      >
+        <div className="flex items-center gap-2">
+          {selectedItem && (
+            <div className="shrink-0">
+              <ModelSelectorLogo modelId={selectedItem.model.id} />
             </div>
-            <ChevronUpIcon
-              className={cn(
-                "h-4 w-4 shrink-0 opacity-50 transition-transform",
-                open && "rotate-180"
-              )}
-            />
-          </Button>
-        }
-      />
+          )}
+          <p className="inline-flex items-center gap-1.5 truncate">
+            {triggerLabel}
+            {selectedItem?.model.reasoning === true && reasoningConfig && (
+              <span
+                className="inline-flex shrink-0 items-center gap-1"
+                title={reasoningConfig.description}
+              >
+                <reasoningConfig.icon className="text-muted-foreground h-3 w-3" />
+              </span>
+            )}
+          </p>
+        </div>
+        <ChevronUpIcon
+          className={cn(
+            "h-4 w-4 shrink-0 opacity-50 transition-transform",
+            open && "rotate-180"
+          )}
+        />
+      </PopoverButton>
       <PopoverContent align="start" className="w-[350px] p-0">
         {open && (
           <Command>
@@ -656,29 +637,25 @@ const PureModelSelector = ({
                 placeholder="Search models..."
               />
               <Popover onOpenChange={setFilterOpen} open={filterOpen}>
-                <PopoverTrigger
-                  render={
-                    <Button
-                      aria-label="Filter models"
-                      className={cn(
-                        "relative mr-3 h-8 w-8 p-0",
-                        activeFilterCount > 0 && "text-primary"
-                      )}
-                      size="sm"
-                      variant="ghost"
+                <PopoverButton
+                  aria-label="Filter models"
+                  className={cn(
+                    "relative mr-3 h-8 w-8 p-0",
+                    activeFilterCount > 0 && "text-primary"
+                  )}
+                  size="sm"
+                  variant="ghost"
+                >
+                  <FilterIcon className="h-4 w-4" />
+                  {activeFilterCount > 0 && (
+                    <Badge
+                      className="absolute -top-1 -right-1 flex h-4 min-w-[16px] items-center justify-center p-0 text-xs"
+                      variant="secondary"
                     >
-                      <FilterIcon className="h-4 w-4" />
-                      {activeFilterCount > 0 && (
-                        <Badge
-                          className="absolute -top-1 -right-1 flex h-4 min-w-[16px] items-center justify-center p-0 text-xs"
-                          variant="secondary"
-                        >
-                          {activeFilterCount}
-                        </Badge>
-                      )}
-                    </Button>
-                  }
-                />
+                      {activeFilterCount}
+                    </Badge>
+                  )}
+                </PopoverButton>
                 <PopoverContent align="end" className="p-0">
                   <div className="p-4">
                     <div className="mb-3 flex h-7 items-center justify-between">

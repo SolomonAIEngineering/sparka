@@ -1,5 +1,3 @@
-import { transformUiSource } from "./ui-source";
-
 // Explicit feature boundaries. The unsuffixed file is the reference app's native
 // Base implementation; selection replaces its content at the identical target.
 // These are source addresses, never heuristics for translating behavior.
@@ -43,6 +41,67 @@ export const uiImplementations = [
     radix:
       "packages/registry/src/plugins/mcp/src/connector-menu-item.radix.tsx",
   },
+  {
+    target: "components/hint.tsx",
+    source: "apps/chat/components/hint.tsx",
+    radix: "apps/chat/components/hint.radix.tsx",
+  },
+  {
+    target: "components/menu-button.tsx",
+    source: "apps/chat/components/menu-button.tsx",
+    radix: "apps/chat/components/menu-button.radix.tsx",
+  },
+  {
+    target: "components/popover-button.tsx",
+    source: "apps/chat/components/popover-button.tsx",
+    radix: "apps/chat/components/popover-button.radix.tsx",
+  },
+  {
+    target: "components/disclosure-button.tsx",
+    source: "apps/chat/components/disclosure-button.tsx",
+    radix: "apps/chat/components/disclosure-button.radix.tsx",
+  },
+  {
+    target: "components/drawer-close-button.tsx",
+    source: "apps/chat/components/drawer-close-button.tsx",
+    radix: "apps/chat/components/drawer-close-button.radix.tsx",
+  },
+  {
+    target: "components/dialog-button.tsx",
+    source: "apps/chat/components/dialog-button.tsx",
+    radix: "apps/chat/components/dialog-button.radix.tsx",
+  },
+  {
+    target: "components/navigation-links.tsx",
+    source: "apps/chat/components/navigation-links.tsx",
+    radix: "apps/chat/components/navigation-links.radix.tsx",
+  },
+  {
+    target: "components/sidebar-menus.tsx",
+    source: "apps/chat/components/sidebar-menus.tsx",
+    radix: "apps/chat/components/sidebar-menus.radix.tsx",
+  },
+  {
+    target: "components/model-selection-indicator.tsx",
+    source: "apps/chat/components/model-selection-indicator.tsx",
+    radix: "apps/chat/components/model-selection-indicator.radix.tsx",
+  },
+  {
+    target: "components/attachment-preview-trigger.tsx",
+    source: "apps/chat/components/attachment-preview-trigger.tsx",
+    radix: "apps/chat/components/attachment-preview-trigger.radix.tsx",
+  },
+  {
+    target: "providers/ui-direction.tsx",
+    source: "apps/chat/providers/ui-direction.tsx",
+    radix: "apps/chat/providers/ui-direction.radix.tsx",
+  },
+  {
+    target: "plugins/mcp/ui/transport-select.tsx",
+    source: "packages/registry/src/plugins/mcp/src/ui/transport-select.tsx",
+    radix:
+      "packages/registry/src/plugins/mcp/src/ui/transport-select.radix.tsx",
+  },
 ] as const;
 
 export type UiImplementation = (typeof uiImplementations)[number];
@@ -61,7 +120,7 @@ export const selectUiSources = async (
           (entry) => entry.target === target
         );
         if (!implementation) {
-          return [target, transformUiSource(source, target, base)] as const;
+          return [target, source] as const;
         }
         let radix: string;
         try {

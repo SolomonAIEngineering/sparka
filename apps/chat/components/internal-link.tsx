@@ -17,7 +17,7 @@ import { useRouter } from "next/navigation";
 const PRIMARY_MOUSE_BUTTON = 0;
 const AUXILIARY_MOUSE_BUTTON = 1;
 
-type InternalLinkProps<T extends string> = Omit<
+export type InternalLinkProps<T extends string> = Omit<
   ReactComponentProps<typeof Link>,
   "href" | "as"
 > & {

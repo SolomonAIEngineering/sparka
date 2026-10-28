@@ -1,4 +1,3 @@
-import React from "react";
 import { expect, test, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { disableAutoSnapshot, takeSnapshot } from "@uiverify/vitest";
@@ -74,7 +73,7 @@ test.each(["pointer", "keyboard"] as const)(
     const share = vi.fn<() => void>();
     const fixture = await mount(
       <DropdownMenu>
-        <DropdownMenuTrigger render={<button type="button">Actions</button>} />
+        <DropdownMenuTrigger type="button">Actions</DropdownMenuTrigger>
         <DropdownMenuContent>
           <MoveMenuItem onActivate={move}>Move</MoveMenuItem>
           <ShareMenuSurface authenticated onShare={share} />
@@ -116,7 +115,7 @@ test("guest share opens its sign-in hint while retaining the parent menu", async
   const share = vi.fn<() => void>();
   const fixture = await mount(
     <DropdownMenu>
-      <DropdownMenuTrigger render={<button type="button">Actions</button>} />
+      <DropdownMenuTrigger type="button">Actions</DropdownMenuTrigger>
       <DropdownMenuContent>
         <ShareMenuSurface authenticated={false} onShare={share} />
       </DropdownMenuContent>
