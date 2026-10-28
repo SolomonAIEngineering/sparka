@@ -8,6 +8,8 @@
     "plugins/search/router.ts",
     "plugins/search/search-backfill.ts",
     "plugins/search/search-chats.tsx",
+    "plugins/search/search-surface.tsx",
+    "plugins/search/search-surface-props.ts",
     "plugins/search/search-hook.ts",
     "plugins/search/search-queries.ts",
     "plugins/search/search-results-view.tsx",

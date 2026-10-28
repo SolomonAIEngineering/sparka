@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { FolderInput } from "lucide-react";
 import { useSession } from "@/providers/session-provider";
 import { useTRPC } from "@/trpc/react";
-import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { MoveMenuItem } from "./move-menu-item";
 import {
   BreadcrumbItem,
   BreadcrumbLink,
@@ -44,15 +44,14 @@ export const ProjectChatActions = ({
   }
   return (
     <>
-      <DropdownMenuItem
-        closeOnClick={false}
-        onClick={() => {
+      <MoveMenuItem
+        onActivate={() => {
           setOpen(true);
         }}
       >
         <FolderInput size={16} />
         <span>Move to project</span>
-      </DropdownMenuItem>
+      </MoveMenuItem>
       {open && (
         <EveMoveProjectDialog
           conversation={chat}

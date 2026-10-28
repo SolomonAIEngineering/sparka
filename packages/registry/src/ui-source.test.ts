@@ -21,29 +21,27 @@ const view = <Trigger render={<DropdownMenuItem render={<a href='/share' />} ref
   expect(output).not.toContain("nativeButton");
 });
 
-test("menu actions retain their handler while preventing selection dismissal", () => {
-  const source = `import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
-const item = <DropdownMenuItem closeOnClick={false} onClick={onShare}>Share</DropdownMenuItem>;`;
-  const output = transformUiSource(source, "share.tsx", "radix");
-  expect(output).not.toContain("closeOnClick");
-  expect(output).toContain("event.preventDefault()");
-  expect(output).toContain("onClick={onShare}");
-  const dismissing = transformUiSource(
-    source.replace("closeOnClick={false}", "closeOnClick"),
-    "share.tsx",
-    "radix"
-  );
-  expect(dismissing).not.toContain("closeOnClick");
-  expect(dismissing).not.toContain("onSelect");
-});
+test.each(["{false}", "{true}", "{shouldClose}", "{condition ? false : true}"])(
+  "menu dismissal requires explicit native source: %s",
+  (value) => {
+    const source = `import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
+const item = <DropdownMenuItem closeOnClick=${value} onSelect={existingHandler} onClick={onShare}>Share</DropdownMenuItem>;`;
+    expect(() => transformUiSource(source, "menu.tsx", "radix")).toThrow(
+      "DropdownMenuItem.closeOnClick"
+    );
+  }
+);
 
-test("optional editable bubbles keep both their button and readonly div", () => {
-  const source = `import { BubbleContent } from "@/components/ui/bubble";
-const bubble = <BubbleContent render={onEdit ? (<button onClick={onEdit} />) : undefined}><pre>{text}</pre></BubbleContent>;`;
-  const output = transformUiSource(source, "user-message-view.tsx", "radix");
-  expect(output).toContain(
-    "<BubbleContent asChild>{onEdit ? <button onClick={onEdit}><pre>{text}</pre></button> : <div><pre>{text}</pre></div>}</BubbleContent>"
-  );
+test("conditional and callback slots fail instead of losing fallback behavior", () => {
+  for (const render of [
+    "onEdit ? <button /> : undefined",
+    "(props) => <button {...props} />",
+  ]) {
+    const source = `import { BubbleContent } from "@/components/ui/bubble"; const bubble = <BubbleContent render={${render}}><pre>{text}</pre></BubbleContent>;`;
+    expect(() => transformUiSource(source, "bubble.tsx", "radix")).toThrow(
+      "Unsupported native render composition"
+    );
+  }
 });
 
 test("readonly native checkboxes use ARIA without disabling their containing row", () => {
@@ -53,24 +51,6 @@ const checkbox = <Checkbox aria-hidden readOnly checked={selected} tabIndex={-1}
   expect(output).toContain("aria-readonly");
   expect(output).not.toContain("readOnly");
   expect(output).not.toContain("disabled");
-});
-
-test("Radix search relies on its native nested dialog backdrop without dead imports", () => {
-  const source = `import { createPortal } from "react-dom";
-import { Dialog, DialogOverlay, DialogContent } from "@/components/ui/dialog";
-import { useSidebar } from "@/components/ui/sidebar";
-const Search = () => { const { isMobile, openMobile, setOpenMobile } = useSidebar(); return <Dialog>{/* Base UI omits nested backdrops. */}{open && isMobile && openMobile && createPortal(<DialogOverlay forceRender />, document.body)}<DialogContent onClick={() => setOpenMobile(false)} /></Dialog>; };`;
-  const output = transformUiSource(
-    source,
-    "plugins/search/search-chats.tsx",
-    "radix"
-  );
-  expect(output).not.toContain("createPortal");
-  expect(output).not.toContain("DialogOverlay");
-  expect(output).not.toContain("isMobile");
-  expect(output).not.toContain("openMobile");
-  expect(output).toContain("setOpenMobile");
-  expect(output).toContain("DialogContent");
 });
 
 test("Radix slots preserve prebuilt elements and native selectors without touching form render", () => {
@@ -86,27 +66,24 @@ const view = <><TooltipTrigger render={button} /><DropdownMenuContent className=
   expect(output).toContain("<Controller render={renderField}/>");
 });
 
-test("context timing moves to the native Radix root and Select keeps inline options", () => {
-  const source = `import { HoverCard, HoverCardTrigger } from "@/components/ui/hover-card";
-import { Select } from "@/components/ui/select";
-const root = <HoverCard {...props} />;
-const trigger = <HoverCardTrigger delay={0} closeDelay={0} render={<button>Context</button>} />;
-const select = <Select items={{a: "A"}} value={value}>{options}</Select>;`;
-  const output = transformUiSource(
-    source,
+test("hover timing requires native composition regardless of filename", () => {
+  const source = `import { HoverCardTrigger } from "@/components/ui/hover-card"; const trigger = <HoverCardTrigger delay={0} render={<button />} />;`;
+  for (const file of [
+    "context.tsx",
     "components/ai-elements/context.tsx",
-    "radix"
+    "other.tsx",
+  ]) {
+    expect(() => transformUiSource(source, file, "radix")).toThrow(
+      "HoverCardTrigger.delay"
+    );
+  }
+});
+
+test("Select with inline options retains its native children", () => {
+  const source = `import { Select } from "@/components/ui/select"; const select = <Select items={{a: "A"}} value={value}>{options}</Select>;`;
+  expect(transformUiSource(source, "select.tsx", "radix")).toContain(
+    "<Select value={value}>{options}</Select>"
   );
-  expect(output).toContain(
-    "<HoverCard openDelay={0} closeDelay={0} {...props}/>"
-  );
-  expect(output).toContain(
-    "<HoverCardTrigger asChild><button>Context</button></HoverCardTrigger>"
-  );
-  expect(output).toContain("<Select value={value}>{options}</Select>");
-  expect(
-    transformUiSource(output, "components/ai-elements/context.tsx", "radix")
-  ).toBe(output);
 });
 
 test("native direction context follows the library API", () => {

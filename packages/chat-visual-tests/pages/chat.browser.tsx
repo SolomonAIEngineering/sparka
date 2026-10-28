@@ -703,6 +703,18 @@ test.each(["desktop", "mobile"] as const)(
         page.getByText("Add an index to speed up your", { exact: false })
       )
       .toBeVisible();
+    // Both native implementations restore focus after keyboard dismissal.
+    await userEvent.keyboard("{Escape}");
+    await expect
+      .element(page.getByRole("button", { name: /Search chats/u }))
+      .toHaveFocus();
+    await userEvent.keyboard("{Enter}");
+    await userEvent.fill(page.getByRole("combobox"), "invoice");
+    await expect
+      .element(
+        page.getByText("Add an index to speed up your", { exact: false })
+      )
+      .toBeVisible();
     if (viewport === "mobile") {
       await userEvent.keyboard("{Escape}");
       await expect

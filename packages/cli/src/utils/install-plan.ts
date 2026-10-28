@@ -193,9 +193,10 @@ const installPlan = async (
   );
   const overwrite =
     options.overwrite === true || options.fresh === true || replacingShared;
-  // The shadcn installer infers destinations for native UI files. Until those paths are
-  // explicit, they cannot participate in protection or registration rollback.
-  if (overwrite) {
+  // Native prerequisites use inferred destinations. Fresh creation owns the
+  // entire new project; existing applications still need explicit targets for
+  // protection and registration rollback.
+  if (overwrite && options.fresh !== true) {
     const unprotected = plan.items.flatMap(
       (item: ReadonlyNative<Plan["items"][number]>) =>
         (item.files ?? [])

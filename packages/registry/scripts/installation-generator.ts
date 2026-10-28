@@ -149,6 +149,31 @@ const generateInstallation = async (
   const timings: Record<string, number> = {};
   const beforeCapture = performance.now();
   const items = await captureRegistry();
+  // The mirror owns feature source only. Native primitives already belong to
+  // its host; verify them before excluding their installation from this stage.
+  const nativeDependencies = [
+    ...new Set(
+      items.flatMap((item) =>
+        (item.registryDependencies ?? []).filter((dependency) =>
+          /^[a-z][a-z0-9-]*$/u.test(dependency)
+        )
+      )
+    ),
+  ];
+  await Promise.all(
+    nativeDependencies.map(async (dependency) => {
+      const file = `components/ui/${dependency}.tsx`;
+      if (options.projectFiles?.has(file) === true) {
+        return;
+      }
+      if (options.projectFiles) {
+        throw new Error(
+          `Missing native prerequisite in validation host: ${file}`
+        );
+      }
+      await readFile(path.join(demoRoot, file));
+    })
+  );
   timings.captureMs = performance.now() - beforeCapture;
   const encoder = new TextEncoder();
   const projectFiles = new Map([
@@ -172,6 +197,7 @@ const generateInstallation = async (
       items,
       files: projectFiles,
       protectedPaths: bootstrapPaths,
+      preinstalledRegistryDependencies: nativeDependencies,
     },
     async (project) => {
       const { directory } = project;
