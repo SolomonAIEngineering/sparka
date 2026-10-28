@@ -1,3 +1,4 @@
+import type { SessionModel } from "@/lib/session-profile-contracts";
 import type { LanguageModelMiddleware } from "ai";
 import { wrapLanguageModel } from "ai";
 import { GUEST_POLICY } from "@/plugins/guest-chat/guest-policy";
@@ -92,9 +93,7 @@ export const guestModelMiddleware: LanguageModelMiddleware = {
   },
 };
 
-export const resolveGuestModel = async (): Promise<
-  Awaited<ReturnType<typeof resolveEveModel>>
-> => {
+export const resolveGuestModel = async (): Promise<SessionModel> => {
   const resolved = await resolveEveModel(GUEST_POLICY.modelId);
   return {
     ...resolved,

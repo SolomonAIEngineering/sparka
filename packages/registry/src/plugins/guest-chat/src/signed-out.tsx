@@ -4,7 +4,7 @@ import { hasText, nonEmptyText } from "@/components/text-value";
 
 import { useEveAgent } from "eve/react";
 import React, { useEffect, useRef, useState } from "react";
-import type { JSX as ReactJSX, ComponentProps } from "react";
+import type { JSX as ReactJSX } from "react";
 import { z } from "zod";
 
 import {
@@ -23,7 +23,6 @@ import { GUEST_POLICY } from "./guest-policy";
 
 import { EveComposer } from "@/components/eve/eve-composer";
 import { EveMessages } from "@/components/eve/eve-messages";
-import { useEveAttachments } from "@/components/eve/use-eve-attachments";
 
 const bindingSchema = z.object({
   credential: z.string(),
@@ -86,79 +85,72 @@ const GuestConversationView = ({
   readonly onDraftChange: (draft: string) => void;
   readonly onSend: (text: string) => void;
   readonly onStop: () => void;
-}): ReactJSX.Element => {
-  const files = useEveAttachments();
-  const [selectedTool, setSelectedTool] =
-    useState<ComponentProps<typeof EveComposer>["selectedTool"]>(null);
-  return (
-    <>
-      <MessageScrollerProvider autoScroll>
-        <MessageScroller className="min-h-0 flex-1">
-          <MessageScrollerViewport>
-            <MessageScrollerContent className="mx-auto w-full max-w-3xl p-4">
-              <EveMessages
-                messages={messages}
-                isReadonly={false}
-                disabled={busy}
-                respond={() => {
-                  // Guest sessions do not expose tool input requests.
-                }}
-                modelForMessage={() => modelId}
-              />
-              {busy && (
-                <output className="text-muted-foreground text-sm">
-                  Responding…
-                </output>
-              )}
-            </MessageScrollerContent>
-          </MessageScrollerViewport>
-          <MessageScrollerButton />
-        </MessageScroller>
-      </MessageScrollerProvider>
-      <div className="mx-auto w-full max-w-3xl p-4">
-        {hasText(failure) && (
-          <p role="alert" className="text-destructive mb-3 text-sm">
-            {failure}
-          </p>
-        )}
-        {expired && (
-          <output className="text-muted-foreground mb-3 text-sm">
-            This chat has expired. Start a new chat to continue.
-            <Button
-              variant="link"
-              onClick={() => {
-                globalThis.dispatchEvent(new Event("chatjs:new-chat"));
+}): ReactJSX.Element => (
+  <>
+    <MessageScrollerProvider autoScroll>
+      <MessageScroller className="min-h-0 flex-1">
+        <MessageScrollerViewport>
+          <MessageScrollerContent className="mx-auto w-full max-w-3xl p-4">
+            <EveMessages
+              messages={messages}
+              isReadonly={false}
+              disabled={busy}
+              respond={() => {
+                // Guest sessions do not expose tool input requests.
               }}
-            >
-              New chat
-            </Button>
-          </output>
-        )}
-        <EveComposer
-          autoFocus
-          files={files}
-          selectedTool={selectedTool}
-          onToolChange={setSelectedTool}
-          retainedModelId={modelId}
-          status={busy ? "streaming" : "ready"}
-          disabled={busy || expired}
-          draft={draft}
-          onDraftChange={onDraftChange}
-          onSubmit={() => {
-            onSend(draft.trim());
-          }}
-          onStop={
-            busy && !expired
-              ? (): void => {
-                  onStop();
-                }
-              : undefined
-          }
-        />
-      </div>
-    </>
-  );
-};
+              modelForMessage={() => modelId}
+            />
+            {busy && (
+              <output className="text-muted-foreground text-sm">
+                Responding…
+              </output>
+            )}
+          </MessageScrollerContent>
+        </MessageScrollerViewport>
+        <MessageScrollerButton />
+      </MessageScroller>
+    </MessageScrollerProvider>
+    <div className="mx-auto w-full max-w-3xl p-4">
+      {hasText(failure) && (
+        <p role="alert" className="text-destructive mb-3 text-sm">
+          {failure}
+        </p>
+      )}
+      {expired && (
+        <output className="text-muted-foreground mb-3 text-sm">
+          This chat has expired. Start a new chat to continue.
+          <Button
+            variant="link"
+            onClick={() => {
+              globalThis.dispatchEvent(new Event("chatjs:new-chat"));
+            }}
+          >
+            New chat
+          </Button>
+        </output>
+      )}
+      <EveComposer
+        autoFocus
+
+        retainedModelId={modelId}
+        status={busy ? "streaming" : "ready"}
+        disabled={busy || expired}
+        draft={draft}
+        onDraftChange={onDraftChange}
+        onSubmit={() => {
+          onSend(draft.trim());
+        }}
+        onStop={
+          busy && !expired
+            ? (): void => {
+                onStop();
+              }
+            : undefined
+        }
+      />
+    </div>
+  </>
+);
 
 const GuestConversation = ({
   binding,
@@ -275,9 +267,6 @@ const GuestConversation = ({
 const GuestChatScreen = (): ReactJSX.Element => {
   const [binding, setBinding] = useState<Binding>();
   const [draft, setDraft] = useState("");
-  const files = useEveAttachments();
-  const [selectedTool, setSelectedTool] =
-    useState<ComponentProps<typeof EveComposer>["selectedTool"]>(null);
   const { modelId } = GUEST_POLICY;
   const [busy, setBusy] = useState(false);
   const [commandError, setCommandError] = useState("");
@@ -366,9 +355,6 @@ const GuestChatScreen = (): ReactJSX.Element => {
                 onSubmit={() => {
                   void submit();
                 }}
-                files={files}
-                selectedTool={selectedTool}
-                onToolChange={setSelectedTool}
               />
             </ChatWelcomeView>
           )}

@@ -1,3 +1,4 @@
+import type { SessionAuthentication } from "@/lib/session-profile-contracts";
 import { isNonEmptyString } from "@/lib/is-non-empty-string";
 
 import { timingSafeEqual } from "node:crypto";
@@ -132,14 +133,7 @@ const ownsGatewaySession = async (
 
 export const authenticateEveGateway = async (
   request: ReadonlyNativeSurface<Request>
-): Promise<{
-  attributes: Record<string, string>;
-  authenticator: string;
-  issuer: string;
-  principalId: string;
-  principalType: string;
-  subject: string;
-} | null> => {
+): Promise<SessionAuthentication | null> => {
   if (!env.EVE_GATEWAY_SECRET) {
     return null;
   }

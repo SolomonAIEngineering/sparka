@@ -24,6 +24,10 @@ test("home with Guest Chat installed has a fixed inexpensive model", async () =>
   await expect
     .element(page.getByRole("button", { name: "Sign in" }).first())
     .toBeVisible();
+  await expect
+    .element(page.getByRole("button", { name: "Composer options" }))
+    .not.toBeInTheDocument();
+  expect(document.querySelector('input[type="file"]')).toBeNull();
   await page.viewport(390, 844);
   const header = document.querySelector("header");
   if (!header) {

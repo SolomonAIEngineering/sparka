@@ -175,11 +175,11 @@ Generated modules register routers, database schemas, instrumentation, layout, u
 
 Declare `signedOut: { export: "GuestChatScreen" }` and export a no-prop component from `signed-out.tsx`. Only one plugin may own this screen. Core renders it at the signed-out chat entrypoint. Without it, core redirects to `/login`.
 
-The screen owns its conversation state and policy. It can reuse core presentation components without making the account model picker or account conversation APIs depend on guest behavior.
+The screen owns its conversation state and policy. It can reuse core presentation components without making the account model picker or account conversation APIs depend on guest behavior. `EveComposer` is text-only by default. Account callers supply the optional `capabilities` object containing attachment state, selected tool, and tool-change callback; text-only screens do not create those states or mount upload controls.
 
 ## Native session profiles
 
-Declare `sessionProfile: { export: "guestSessionProfile", authenticator: "chatjs-disposable-guest" }`. Export a `SessionProfile` from `session-profile.ts`, which must be safe to load in the native EVE graph. It contains `authenticator`, `authenticate(request)`, `resolveModel()`, and `instructions`.
+Declare `sessionProfile: { export: "guestSessionProfile", authenticator: "chatjs-disposable-guest" }`. Export a `SessionProfile` from `session-profile.ts`, which must be safe to load in the native EVE graph. It contains `authenticator`, `authenticate(request)`, `resolveModel()`, and `instructions`. Shared `SessionAuthentication` and `SessionModel` types in `lib/session-profile-contracts.ts` define the returned identity and model settings independently of account implementations. A profile resolves its own model without accepting an account model-selection argument.
 
 The channel composes installed authenticators. Model and instruction selection uses the persisted initiator's authenticator, never reconnect credentials or caller-supplied attributes. Unknown or removed profiles throw. Account hooks, tool execution, billing, and workspace access require the account authenticator explicitly. A profile does not grant those account capabilities.
 

@@ -1,3 +1,4 @@
+import type { SessionAuthentication } from "@/lib/session-profile-contracts";
 import { readGuestBody } from "@/plugins/guest-chat/guest-body";
 import { GUEST_POLICY } from "@/plugins/guest-chat/guest-policy";
 import {
@@ -99,14 +100,7 @@ const policyMatches = (
 /** Authenticate every guest command against both signed credentials and durable policy. */
 export const authenticateDisposableGuest = async (
   request: ReadonlyNativeSurface<Request>
-): Promise<{
-  attributes: Record<string, string>;
-  authenticator: string;
-  issuer: string;
-  principalId: string;
-  principalType: "user";
-  subject: string;
-} | null> => {
+): Promise<SessionAuthentication | null> => {
   const authorization = request.headers.get("authorization") ?? "";
   const claims = readGuestCredential(
     authorization.startsWith(BEARER_PREFIX)
