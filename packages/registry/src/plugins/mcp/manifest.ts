@@ -90,5 +90,21 @@ const mcpItem: RegistryItem = {
   },
   name: "mcp",
   type: "registry:item",
+  registryDependencies: [
+    "badge",
+    "button",
+    "collapsible",
+    "dialog",
+    "dropdown-menu",
+    "field",
+    "input",
+    "label",
+    "scroll-area",
+    "select",
+    "separator",
+    "skeleton",
+    "spinner",
+    "switch",
+  ],
 };
 export { mcpDefinition, mcpFiles, mcpItem };

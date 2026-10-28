@@ -65,6 +65,19 @@ const projectsItem: RegistryItem = {
   ],
   name: "projects",
   type: "registry:item",
+  registryDependencies: [
+    "alert-dialog",
+    "breadcrumb",
+    "button",
+    "dialog",
+    "dropdown-menu",
+    "input",
+    "label",
+    "popover",
+    "separator",
+    "sidebar",
+    "textarea",
+  ],
   description: "Projects, chat organization, and shared project instructions",
   files: projectsFiles.map((file) => ({
     path: file.startsWith("plugins/projects/")

@@ -31,6 +31,15 @@ const sharingDefinition = pluginDefinitionSchema.parse({
 const sharingItem: RegistryItem = {
   name: "sharing",
   type: "registry:item",
+  registryDependencies: [
+    "breadcrumb",
+    "button",
+    "dialog",
+    "dropdown-menu",
+    "message-scroller",
+    "popover",
+    "tooltip",
+  ],
   dependencies: [
     "@tanstack/react-query",
     "@trpc/server",

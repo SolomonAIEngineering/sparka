@@ -9,6 +9,7 @@ export const initializeShadcn = async (
   args: readonly string[]
 ): Promise<void> => {
   if (args.length === 0) {
+    await prepareScaffoldUi(cwd);
     return;
   }
   const executable = createRequire(import.meta.url).resolve("shadcn");

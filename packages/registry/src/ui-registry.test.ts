@@ -6,6 +6,31 @@ import { registry } from "../registry";
 import { pluginDefinitionSchema, toolDefinitionSchema } from "../metadata";
 import { registryItemForUi } from "../ui-registry";
 
+test.each(["search", "sharing", "projects", "mcp"])(
+  "%s declares the native primitives its installed source imports",
+  async (name) => {
+    const item = registry.items.find((entry) => entry.name === name);
+    if (!item) {
+      throw new Error(`Missing registry item ${name}`);
+    }
+    await Promise.all(
+      (item.files ?? [])
+        .filter((file) => file.path.endsWith(".tsx"))
+        .map(async (file) => {
+          const source = await readFile(
+            path.resolve(import.meta.dir, "..", file.path),
+            "utf-8"
+          );
+          for (const [, primitive] of source.matchAll(
+            /@\/components\/ui\/(?<primitive>[a-z-]+)/gu
+          )) {
+            expect(item.registryDependencies).toContain(primitive);
+          }
+        })
+    );
+  }
+);
+
 test.each(["base", "radix"] as const)(
   "UI descriptors require an explicit native library: %s",
   (base) => {
