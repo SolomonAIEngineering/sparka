@@ -7,14 +7,7 @@ import { formatDistanceToNow } from "date-fns";
 import React, { useCallback, useEffect, useState } from "react";
 import type { JSX as ReactJSX } from "react";
 
-import {
-  Artifact,
-  ArtifactClose,
-  ArtifactContent,
-  ArtifactDescription,
-  ArtifactHeader,
-  ArtifactTitle,
-} from "@/components/ai-elements/artifact";
+import { XIcon } from "lucide-react";
 import {
   ChatLayout,
   ChatLayoutHandle,
@@ -321,18 +314,23 @@ const DocumentPanelHeader = ({ model }: PanelModelProps): ReactJSX.Element => {
     onDocumentAction,
   } = model;
   return (
-    <ArtifactHeader className="bg-background/80 shrink-0 items-start p-2">
+    <div className="bg-background/80 flex shrink-0 items-start justify-between border-b p-2">
       <div className="flex min-w-0 items-start gap-4">
-        <ArtifactClose
-          className="hover:bg-accent h-fit p-2"
+        <Button
+          className="text-muted-foreground hover:text-foreground hover:bg-accent h-fit w-8 p-2"
           onClick={closeArtifact}
+          size="sm"
+          type="button"
           variant="outline"
-        />
+        >
+          <XIcon className="size-4" />
+          <span className="sr-only">Close</span>
+        </Button>
         <div className="min-w-0">
-          <ArtifactTitle className="break-words">
+          <p className="text-foreground text-sm font-medium break-words">
             {previewing ? artifact.title : (revision?.title ?? artifact.title)}
-          </ArtifactTitle>
-          <ArtifactDescription>{subtitle} </ArtifactDescription>
+          </p>
+          <p className="text-muted-foreground text-sm">{subtitle} </p>
         </div>
       </div>
       {revision && !document.isError && (
@@ -373,7 +371,7 @@ const DocumentPanelHeader = ({ model }: PanelModelProps): ReactJSX.Element => {
           }
         />
       )}
-    </ArtifactHeader>
+    </div>
   );
 };
 
@@ -448,7 +446,7 @@ const DocumentPanelContent = ({ model }: PanelModelProps): ReactJSX.Element => {
     index,
   } = model;
   return (
-    <ArtifactContent className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
       {document.isPending && !previewing && (
         <DocumentSkeleton artifactKind={artifact.kind} />
       )}
@@ -491,7 +489,7 @@ const DocumentPanelContent = ({ model }: PanelModelProps): ReactJSX.Element => {
         />
       )}
       <DocumentAssistantControls model={model} />
-    </ArtifactContent>
+    </div>
   );
 };
 
@@ -566,9 +564,9 @@ const EveArtifactPanel = (
   const model = useDocumentPanel(props);
   const { owned, editing, index, history } = model;
   return (
-    <Artifact
+    <div
       aria-label="Document"
-      className="relative h-full min-h-0 w-full rounded-none border-0"
+      className="bg-background relative flex h-full min-h-0 w-full flex-col overflow-hidden rounded-none border-0 shadow-sm"
       data-testid="artifact"
       {...artifactRegionProps}
     >
@@ -582,7 +580,7 @@ const EveArtifactPanel = (
       )}
       <DocumentPanelContent model={model} />
       <DocumentPanelFooter model={model} />
-    </Artifact>
+    </div>
   );
 };
 

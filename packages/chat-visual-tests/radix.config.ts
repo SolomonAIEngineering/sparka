@@ -132,6 +132,8 @@ export default defineConfig({
           "../../apps/chat/tests/visual/composer-interactions.browser.tsx",
           "../../apps/chat/tests/visual/composer-menu.browser.tsx",
           "../../apps/chat/tests/visual/conversation-native.browser.tsx",
+          "../../apps/chat/tests/visual/eve-message-actions.browser.tsx",
+          "../../apps/chat/tests/visual/eve-artifact.browser.tsx",
           "../../apps/chat/tests/visual/model-selector.browser.tsx",
           "../../apps/chat/tests/visual/model-selector-actions.browser.tsx",
           "../../apps/chat/tests/visual/reasoning.browser.tsx",
