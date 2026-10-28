@@ -1,4 +1,5 @@
 "use client";
+
 import {
   PluginChatBreadcrumb,
   PluginChatActions,
@@ -7,7 +8,7 @@ import {
 
 import { useQuery } from "@tanstack/react-query";
 import { ChevronDown } from "lucide-react";
-import React, { useState } from "react";
+import { useState } from "react";
 import type { JSX as ReactJSX } from "react";
 import { toast } from "sonner";
 
@@ -81,13 +82,9 @@ const EveChatHeader = ({
               {draft === undefined ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger
-                    render={
-                      <button
-                        aria-label={`Chat menu: ${title}`}
-                        className="group text-foreground hover:bg-muted focus-visible:ring-ring flex min-w-0 items-center gap-1.5 rounded-md border border-transparent bg-transparent px-2 py-1 text-sm font-medium transition focus-visible:ring-1 focus-visible:outline-none"
-                        type="button"
-                      />
-                    }
+                    aria-label={`Chat menu: ${title}`}
+                    className="group text-foreground hover:bg-muted focus-visible:ring-ring flex min-w-0 items-center gap-1.5 rounded-md border border-transparent bg-transparent px-2 py-1 text-sm font-medium transition focus-visible:ring-1 focus-visible:outline-none"
+                    type="button"
                   >
                     <span className="truncate">{title}</span>
                     <ChevronDown

@@ -1,5 +1,6 @@
 "use client";
 
+import { MenuButton } from "@/components/menu-button";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -28,7 +29,6 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { McpConnector } from "@/plugins/mcp/db/mcp-schema";
 import type { McpConnectorsDialog } from "@/plugins/mcp/search/mcp-search-params";
@@ -162,17 +162,13 @@ const CustomConnectorRow = ({
           </InternalLink>
         ) : null}
         <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <Button
-                aria-label="More connector actions"
-                size="icon"
-                variant="ghost"
-              />
-            }
+          <MenuButton
+            aria-label="More connector actions"
+            size="icon"
+            variant="ghost"
           >
             <MoreHorizontal className="size-4" />
-          </DropdownMenuTrigger>
+          </MenuButton>
           <DropdownMenuContent align="end">
             <DropdownMenuGroup>
               {authStatus?.isAuthenticated === true ? (

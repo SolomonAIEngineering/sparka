@@ -1,13 +1,12 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
+import { MenuButton } from "@/components/menu-button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { ComposerControlProps } from "./control";
 
@@ -40,20 +39,16 @@ export const ComposerMenu = (
   }
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            aria-label="Composer options"
-            className="h-8 gap-2 px-2 @[500px]:h-10"
-            disabled={props.disabled}
-            size="sm"
-            variant="ghost"
-          />
-        }
+      <MenuButton
+        aria-label="Composer options"
+        className="h-8 gap-2 px-2 @[500px]:h-10"
+        disabled={props.disabled}
+        size="sm"
+        variant="ghost"
       >
         <Plus className="size-4" />
         Add
-      </DropdownMenuTrigger>
+      </MenuButton>
       <DropdownMenuContent align="start" className="w-56">
         <DropdownMenuGroup>
           {controls.map(

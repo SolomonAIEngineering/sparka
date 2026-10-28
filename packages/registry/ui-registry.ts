@@ -1,7 +1,6 @@
 import type { RegistryItem } from "shadcn/schema";
 import { pluginDefinitionSchema, toolDefinitionSchema } from "./metadata";
 import { uiImplementations } from "./ui-implementations";
-import { transformUiSource } from "./ui-source";
 
 /** Produce native source for a library without changing public item addresses. */
 export const registryItemForUi = (
@@ -53,10 +52,7 @@ export const registryItemForUi = (
               }
               return { ...file, content };
             }
-            return {
-              ...file,
-              content: transformUiSource(file.content, file.path, base),
-            };
+            return file;
           }),
         }
       : {}),

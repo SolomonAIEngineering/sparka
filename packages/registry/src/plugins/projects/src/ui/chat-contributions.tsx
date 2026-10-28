@@ -1,4 +1,5 @@
 "use client";
+import { BreadcrumbNavigationLink } from "@/components/navigation-links";
 import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { FolderInput } from "lucide-react";
@@ -7,7 +8,6 @@ import { useTRPC } from "@/trpc/react";
 import { MoveMenuItem } from "./move-menu-item";
 import {
   BreadcrumbItem,
-  BreadcrumbLink,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import {
@@ -15,7 +15,6 @@ import {
   SidebarGroupLabel,
   SidebarMenu,
 } from "@/components/ui/sidebar";
-import { InternalLink } from "@/components/internal-link";
 import type { ChatActionProps } from "@/lib/chat-plugin-contracts";
 import { SidebarProjects } from "./sidebar-projects";
 import { EveMoveProjectDialog } from "./eve-move-project-dialog";
@@ -83,21 +82,17 @@ export const ProjectBreadcrumb = ({
   return (
     <>
       <BreadcrumbItem>
-        <BreadcrumbLink
-          render={
-            <InternalLink
-              aria-label={project.name}
-              title={project.name}
-              href={`/project/${project.id}`}
-            >
-              <ProjectIcon
-                icon={getProjectIconName(project.icon)}
-                color={getProjectColorName(project.iconColor)}
-                size={16}
-              />
-            </InternalLink>
-          }
-        />
+        <BreadcrumbNavigationLink
+          aria-label={project.name}
+          title={project.name}
+          href={`/project/${project.id}`}
+        >
+          <ProjectIcon
+            icon={getProjectIconName(project.icon)}
+            color={getProjectColorName(project.iconColor)}
+            size={16}
+          />
+        </BreadcrumbNavigationLink>
       </BreadcrumbItem>
       <BreadcrumbSeparator />
     </>

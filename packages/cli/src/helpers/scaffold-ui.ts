@@ -5,7 +5,6 @@ import {
   uiImplementations,
 } from "../../../registry/ui-implementations";
 import { parseJsonObject, requireJsonObject } from "./json-object";
-import { directoryFiles } from "#cli/utils/installation-files";
 import { readUiBase } from "#cli/utils/ui-compatibility";
 
 // Only used on a freshly copied scaffold, after native init resolves the base.
@@ -39,34 +38,24 @@ export const prepareScaffoldUi = async (cwd: string): Promise<void> => {
           /\/(?:base\/|radix\/)?\{name\}\.json/u,
           "/radix/{name}.json"
         );
-  const groups = await Promise.all(
-    ["app", "components", "hooks", "providers", "lib"].map(
-      async (directory) => await directoryFiles(cwd, directory)
-    )
-  );
-  const files = groups.flat();
   const core = uiImplementations.filter((entry) =>
     entry.source.startsWith("apps/chat/")
   );
-  for (const entry of core) {
-    if (!files.includes(entry.target)) {
-      throw new Error(`Missing native Base implementation for ${entry.target}`);
-    }
-  }
   const variants = core.map((entry) => entry.radix.slice("apps/chat/".length));
-  const sources = new Map(
+  const sources = new Map<string, string>(
     await Promise.all(
-      files
-        .filter(
-          (file) =>
-            file.endsWith(".tsx") &&
-            !file.startsWith("components/ui/") &&
-            !variants.includes(file)
-        )
-        .map(
-          async (file) =>
-            [file, await readFile(path.join(cwd, file), "utf-8")] as const
-        )
+      core.map(async (entry) => {
+        let content: string;
+        try {
+          content = await readFile(path.join(cwd, entry.target), "utf-8");
+        } catch (error) {
+          throw new Error(
+            `Missing native Base implementation for ${entry.target}`,
+            { cause: error }
+          );
+        }
+        return [entry.target, content] as const;
+      })
     )
   );
   const selected = await selectUiSources(

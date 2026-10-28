@@ -1,16 +1,12 @@
 "use client";
 
+import { Hint } from "@/components/hint";
 import { Copy, History, Redo2, Undo2 } from "lucide-react";
 import React from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Toggle } from "@/components/ui/toggle";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import type { ReadonlyReactNode } from "@/lib/readonly-react-node";
 import { documentUi } from "@/composition/generated/document-ui";
 
@@ -64,78 +60,74 @@ export const EveDocumentActions = ({
     <div className="flex shrink-0 flex-row gap-1">
       {run}
       {kind === "text" && (
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <div>
-                <Toggle
-                  aria-label="View changes"
-                  className="h-fit p-2 [&_svg]:size-[18px]"
-                  disabled={disabled || !canCompare}
-                  pressed={comparing}
-                  onPressedChange={onCompare}
-                >
-                  <History size={18} />
-                </Toggle>
-              </div>
-            }
-          />
-          <TooltipContent>View changes</TooltipContent>
-        </Tooltip>
+        <Hint
+          trigger={
+            <div>
+              <Toggle
+                aria-label="View changes"
+                className="h-fit p-2 [&_svg]:size-[18px]"
+                disabled={disabled || !canCompare}
+                pressed={comparing}
+                onPressedChange={onCompare}
+              >
+                <History size={18} />
+              </Toggle>
+            </div>
+          }
+        >
+          View changes
+        </Hint>
       )}
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button
-              aria-label="View Previous version"
-              className={buttonClass}
-              variant="outline"
-              disabled={disabled || previousDisabled}
-              onClick={onPrevious}
-            >
-              <Undo2 size={18} />
-            </Button>
-          }
-        />
-        <TooltipContent>View Previous version</TooltipContent>
-      </Tooltip>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button
-              aria-label="View Next version"
-              className={buttonClass}
-              variant="outline"
-              disabled={disabled || nextDisabled}
-              onClick={onNext}
-            >
-              <Redo2 size={18} />
-            </Button>
-          }
-        />
-        <TooltipContent>View Next version</TooltipContent>
-      </Tooltip>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button
-              aria-label={copyLabel}
-              className={
-                kind === "sheet" ? "hover:bg-accent h-fit p-2" : buttonClass
-              }
-              variant="outline"
-              disabled={disabled}
+      <Hint
+        trigger={
+          <Button
+            aria-label="View Previous version"
+            className={buttonClass}
+            variant="outline"
+            disabled={disabled || previousDisabled}
+            onClick={onPrevious}
+          >
+            <Undo2 size={18} />
+          </Button>
+        }
+      >
+        View Previous version
+      </Hint>
+      <Hint
+        trigger={
+          <Button
+            aria-label="View Next version"
+            className={buttonClass}
+            variant="outline"
+            disabled={disabled || nextDisabled}
+            onClick={onNext}
+          >
+            <Redo2 size={18} />
+          </Button>
+        }
+      >
+        View Next version
+      </Hint>
+      <Hint
+        trigger={
+          <Button
+            aria-label={copyLabel}
+            className={
+              kind === "sheet" ? "hover:bg-accent h-fit p-2" : buttonClass
+            }
+            variant="outline"
+            disabled={disabled}
 
-              onClick={(): void => {
-                void copy();
-              }}
-            >
-              <Copy size={kind === "sheet" ? 16 : 18} />
-            </Button>
-          }
-        />
-        <TooltipContent>{copyLabel}</TooltipContent>
-      </Tooltip>
+            onClick={(): void => {
+              void copy();
+            }}
+          >
+            <Copy size={kind === "sheet" ? 16 : 18} />
+          </Button>
+        }
+      >
+        {copyLabel}
+      </Hint>
     </div>
   );
 };

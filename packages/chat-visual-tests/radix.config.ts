@@ -5,7 +5,6 @@ import { uiverifyPlugin } from "@uiverify/vitest/plugin";
 import { defineConfig } from "vitest/config";
 import type { Alias, AliasOptions } from "vite";
 import { uiImplementations } from "../registry/ui-implementations";
-import { transformUiSource } from "../registry/ui-source";
 import interactions from "../registry/visual/vitest.config";
 import pages from "./vitest.config";
 
@@ -42,7 +41,7 @@ const isAliasList = (value: AliasOptions): value is readonly Alias[] =>
 const referenceAliases: AliasOptions = reference.resolve?.alias ?? {};
 
 // Compare the same routes, state, tokens and capture identities using native
-// Radix primitives. Compositions use the exact generator, not a runtime adapter.
+// Radix primitives. Compositions select the authored native source used by the installer.
 export default defineConfig({
   ...reference,
   define: {
@@ -105,7 +104,7 @@ export default defineConfig({
               "utf-8"
             );
           }
-          return transformUiSource(source, id, uiBase);
+          return null;
         }
         return null;
       },
@@ -129,9 +128,12 @@ export default defineConfig({
       ? [
           "../../apps/chat/tests/visual/direction.browser.tsx",
           "../../apps/chat/tests/visual/native-feature-boundaries.browser.tsx",
+          "../../apps/chat/tests/visual/native-compositions.browser.tsx",
           "../../apps/chat/tests/visual/composer-interactions.browser.tsx",
           "../../apps/chat/tests/visual/composer-menu.browser.tsx",
           "../../apps/chat/tests/visual/conversation-native.browser.tsx",
+          "../../apps/chat/tests/visual/eve-message-actions.browser.tsx",
+          "../../apps/chat/tests/visual/eve-artifact.browser.tsx",
           "../../apps/chat/tests/visual/model-selector.browser.tsx",
           "../../apps/chat/tests/visual/model-selector-actions.browser.tsx",
           "../../apps/chat/tests/visual/reasoning.browser.tsx",

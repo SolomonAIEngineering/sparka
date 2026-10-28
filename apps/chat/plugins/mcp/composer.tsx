@@ -1,4 +1,5 @@
 "use client";
+import { MenuLink } from "@/components/navigation-links";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plug, Settings } from "lucide-react";
 import type { ComposerControlProps } from "@/components/composer/control";
@@ -6,11 +7,9 @@ import React from "react";
 import { toast } from "sonner";
 
 import { ConnectorMenuItem } from "./connector-menu-item";
-import { InternalLink } from "@/components/internal-link";
 
 import {
   DropdownMenuGroup,
-  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuSub,
@@ -130,16 +129,10 @@ const ConnectorsControl = ({
             )
           )}
           <DropdownMenuSeparator />
-          <DropdownMenuItem
-            render={
-              <InternalLink
-                href={isAuthenticated ? "/settings/connectors" : "/login"}
-              />
-            }
-          >
+          <MenuLink href={isAuthenticated ? "/settings/connectors" : "/login"}>
             <Settings />
             {isAuthenticated ? "Manage connectors" : "Sign in"}
-          </DropdownMenuItem>
+          </MenuLink>
         </DropdownMenuGroup>
       </DropdownMenuSubContent>
     </DropdownMenuSub>
