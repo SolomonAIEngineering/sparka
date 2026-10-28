@@ -1,5 +1,30 @@
-import { lstat, mkdir, mkdtemp, readdir, rename, rm } from "node:fs/promises";
+import { constants } from "node:fs";
+import {
+  copyFile,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readlink,
+  rename,
+  rm,
+  symlink,
+} from "node:fs/promises";
 import path from "node:path";
+
+const transferEntry = async (source: string, destination: string) => {
+  const stats = await lstat(source);
+  if (stats.isDirectory()) {
+    // Reserve the name exclusively, then move the whole subtree (including
+    // node_modules) without copying it or replacing a user's directory.
+    await mkdir(destination);
+    await rename(source, destination);
+  } else if (stats.isSymbolicLink()) {
+    await symlink(await readlink(source), destination);
+  } else {
+    await copyFile(source, destination, constants.COPYFILE_EXCL);
+  }
+};
 
 // Only the owned stage is disposable. Finalization never removes a user's path.
 export const createStagedProject = async <T>(
@@ -40,7 +65,18 @@ export const createStagedProject = async <T>(
         `Target changed during creation: ${destination}. No existing files were replaced.`
       );
     }
-    await rename(stage, destination);
+    if (existing) {
+      // Replacing this directory would detach shells whose cwd points to it.
+      for (const entry of await readdir(stage)) {
+        // oxlint-disable-next-line eslint/no-await-in-loop -- Stop transferring on failure before the owned stage is cleaned up.
+        await transferEntry(
+          path.join(stage, entry),
+          path.join(destination, entry)
+        );
+      }
+    } else {
+      await rename(stage, destination);
+    }
     return result;
   } finally {
     await rm(root, { recursive: true, force: true });
