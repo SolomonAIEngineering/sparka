@@ -13,6 +13,7 @@ import { scaffoldFromTemplate } from "./scaffold";
 import { initializeShadcn, runNativeShadcn } from "./initialize-shadcn";
 import { parseJsonObject, requireJsonObject } from "./json-object";
 import { prepareScaffoldUi } from "./scaffold-ui";
+import { cleanNativeLayoutImports } from "./native-layout";
 
 const shellFiles = [
   "package.json",
@@ -86,6 +87,20 @@ export const scaffoldNativeProject = async (
         );
       },
     });
+    const layoutPath = path.join(cwd, "app/layout.tsx");
+    await writeFile(
+      layoutPath,
+      cleanNativeLayoutImports(await readFile(layoutPath, "utf-8"))
+    );
+    const lintPath = path.join(cwd, "oxlint.config.ts");
+    const lint = await readFile(lintPath, "utf-8");
+    await writeFile(
+      lintPath,
+      lint.replace(
+        "  ignorePatterns: [",
+        '  ignorePatterns: [\n    // Preserve the native shadcn hook, like its UI primitives.\n    "hooks/use-mobile.ts",'
+      )
+    );
     const configPath = path.join(cwd, "components.json");
     const native = parseJsonObject(
       await readFile(configPath, "utf-8"),
