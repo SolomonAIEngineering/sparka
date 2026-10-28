@@ -12,7 +12,7 @@ vi.mock("@/composition/generated/installed-signed-out", () => ({
 test("without Guest Chat signed-out chat redirects to login", async () => {
   route.session = null;
   await expect(EveChatPage({})).rejects.toThrow("redirect(/login)");
-  await renderRoute(<LoginPage searchParams={Promise.resolve({})} />, {
+  await renderRoute(<LoginPage />, {
     path: "/login",
   });
   await expect.element(page.getByText("Welcome back")).toBeVisible();

@@ -619,6 +619,8 @@ const verifyResearchInstallation = async (cwd: string, gateway: string) => {
       "install",
       "--ignore-scripts",
     ]);
+    // Native source imports generated branding; prepare it before linting the companion.
+    await run(nodePath.join(cwd, "electron"), ["bun", "run", "prebuild"]);
     await run(cwd, ["bun", "run", "lint"]);
     expect(
       await Bun.file(nodePath.join(cwd, "agent/tools/confirm-note.ts")).exists()

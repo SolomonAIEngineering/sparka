@@ -1,23 +1,12 @@
 import type { SocialAuthSignInOptions } from "@/lib/social-auth";
 import { config } from "@/lib/config";
 
-const ELECTRON_AUTH_CLIENT_ID = "electron";
-
-const ELECTRON_AUTH_COOKIE_PREFIX = "better-auth";
-
-const ELECTRON_AUTH_CALLBACK_PATH = "/auth/callback";
+import { ELECTRON_AUTH_CLIENT_ID } from "./protocol";
 
 const ELECTRON_APP_SCHEME = config.appPrefix;
 
 // @better-auth/electron sends this synthetic Origin for the current protocol.
 const ELECTRON_TRUSTED_ORIGINS = [`${ELECTRON_APP_SCHEME}:/`] as const;
-
-const isDesktopAppEnabled = (): boolean => config.desktopApp.enabled;
-
-const isElectronRenderer = (): boolean =>
-  isDesktopAppEnabled() &&
-  typeof window !== "undefined" &&
-  typeof window.requestAuth === "function";
 
 type SearchParamValue = string | readonly string[] | undefined;
 
@@ -52,8 +41,7 @@ const buildSocialAuthRequest = (
   onRedirectToUrl?: (url: string) => void;
   signInOptions?: SocialAuthSignInOptions;
 } => {
-  const isElectronTransfer =
-    isDesktopAppEnabled() && isElectronTransferQuery(query);
+  const isElectronTransfer = isElectronTransferQuery(query);
   const deviceLoginCallbackURL =
     typeof origin === "string" && origin !== ""
       ? new URL("/device-login", origin).toString()
@@ -82,13 +70,8 @@ const buildSocialAuthRequest = (
 };
 
 export {
-  ELECTRON_AUTH_CLIENT_ID,
-  ELECTRON_AUTH_COOKIE_PREFIX,
-  ELECTRON_AUTH_CALLBACK_PATH,
   ELECTRON_APP_SCHEME,
   ELECTRON_TRUSTED_ORIGINS,
-  isDesktopAppEnabled,
-  isElectronRenderer,
   toSearchParamRecord,
   isElectronTransferQuery,
   buildSocialAuthRequest,

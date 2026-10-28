@@ -148,6 +148,7 @@ export default defineConfig({
             "/plugins/ai-titles",
             "/plugins/credits",
             "/plugins/guest-chat",
+            "/plugins/desktop",
             "/plugins/sharing",
             "/plugins/followup-suggestions",
             "/plugins/mcp",

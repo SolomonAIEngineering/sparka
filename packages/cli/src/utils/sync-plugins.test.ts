@@ -22,7 +22,11 @@ import { mcpFiles, mcpItem } from "../../../registry/src/plugins/mcp/manifest";
 import { installPlan } from "./install-plan";
 import { planInstallation } from "./installation-plan";
 
-import { initializePluginUi, syncPlugins } from "./sync-plugins";
+import {
+  initializePluginUi,
+  pluginRegistrationTargets,
+  syncPlugins,
+} from "./sync-plugins";
 
 const roots: string[] = [];
 const demo = path.resolve(import.meta.dir, "../../../../apps/chat");
@@ -957,22 +961,41 @@ test("signed-out, session policy and cleanup contributions disappear when absent
   }
 });
 
-test.each([
-  { signedOut: { export: "Screen" } },
-  { sessionProfile: { export: "profile", authenticator: "same-profile" } },
-  { cleanup: { export: "cleanup", id: "same-task" } },
-])(
-  "rejects ambiguous contributions before writing registrations: %o",
-  async (contribution) => {
+const runtimeContributions = [
+  {
+    entry: "signed-out.tsx",
+    contribution: { signedOut: { export: "Screen" } },
+    conflict: "Only one plugin may supply the signed-out screen.",
+  },
+  {
+    entry: "session-profile.ts",
+    contribution: {
+      sessionProfile: { export: "profile", authenticator: "same-profile" },
+    },
+    conflict: "Duplicate or reserved plugin identity: same-profile",
+  },
+  {
+    entry: "cleanup.ts",
+    contribution: { cleanup: { export: "cleanup", id: "same-task" } },
+    conflict: "Duplicate or reserved plugin identity: same-task",
+  },
+];
+
+test.each(runtimeContributions)(
+  "rejects ambiguous $entry contributions before writing registrations",
+  async ({ entry, contribution, conflict }) => {
     const root = await fixture();
     await initializePluginUi(root);
     await Promise.all(
       ["first", "second"].map(async (id) => {
-        await mkdir(path.join(root, "plugins", id), { recursive: true });
+        const directory = path.join(root, "plugins", id);
+        await mkdir(directory, { recursive: true });
+        await writeFile(path.join(directory, entry), "export {};\n");
         await writeFile(
-          path.join(root, "plugins", id, "chatjs.json"),
+          path.join(directory, "chatjs.json"),
           JSON.stringify({
-            contractVersion: 1,
+            contractVersion: 2,
+            uiBase: "base",
             id,
             kind: "plugin",
             ...contribution,
@@ -980,7 +1003,7 @@ test.each([
         );
       })
     );
-    await rejects(syncPlugins(root));
+    await rejects(syncPlugins(root), { message: conflict });
     expect(
       await readFile(
         path.join(root, "composition/generated/installed-session-profiles.ts"),
@@ -989,3 +1012,137 @@ test.each([
     ).not.toContain("@/plugins/");
   }
 );
+
+test.each(runtimeContributions)(
+  "missing implied $entry fails before changing registrations",
+  async ({ entry, contribution }) => {
+    const root = await fixture();
+    await initializePluginUi(root);
+    const readRegistrations = async () =>
+      await Promise.all(
+        pluginRegistrationTargets.map(
+          async (file) => await readFile(path.join(root, file), "utf-8")
+        )
+      );
+    const before = await readRegistrations();
+    const directory = path.join(root, "plugins/fixture");
+    await mkdir(directory, { recursive: true });
+    await writeFile(
+      path.join(directory, "chatjs.json"),
+      JSON.stringify({
+        contractVersion: 2,
+        uiBase: "base",
+        kind: "plugin",
+        id: "fixture",
+        ...contribution,
+      })
+    );
+    await rejects(syncPlugins(root), {
+      message: `fixture installation is incomplete. Missing: plugins/fixture/${entry}. Run chat-js add fixture.`,
+    });
+    expect(await readRegistrations()).toEqual(before);
+    await writeFile(path.join(directory, entry), "export {};\n");
+    await syncPlugins(root);
+    expect(await readRegistrations()).not.toEqual(before);
+  }
+);
+
+test.each([
+  {
+    label: "authentication",
+    entry: "auth-server.ts",
+    contribution: { authentication: { export: "auth" } },
+  },
+  {
+    label: "authentication UI",
+    entry: "auth-form.tsx",
+    contribution: { authenticationUi: { form: "Form", signOut: "signOut" } },
+  },
+  {
+    label: "modified navigation",
+    entry: "navigation.ts",
+    contribution: { navigation: { export: "navigation" } },
+  },
+])(
+  "duplicate $label providers leave registrations unchanged",
+  async ({ label, entry, contribution }) => {
+    const root = await fixture();
+    await initializePluginUi(root);
+    const file = path.join(root, "composition/generated/installed-auth.ts");
+    const before = await readFile(file, "utf-8");
+    await Promise.all(
+      ["first", "second"].map(async (id) => {
+        const directory = path.join(root, "plugins", id);
+        await mkdir(directory, { recursive: true });
+        await writeFile(path.join(directory, entry), "export {};\n");
+        await writeFile(
+          path.join(directory, "chatjs.json"),
+          JSON.stringify({
+            contractVersion: 2,
+            uiBase: "base",
+            id,
+            kind: "plugin",
+            files: [`plugins/${id}/${entry}`],
+            ...contribution,
+          })
+        );
+      })
+    );
+    await rejects(syncPlugins(root), {
+      message: `Only one plugin may supply ${label}.`,
+    });
+    expect(await readFile(file, "utf-8")).toBe(before);
+  }
+);
+
+test("sign-out defaults to web and stays independent of auth forms and layout", async () => {
+  const root = await fixture();
+  await initializePluginUi(root);
+  expect(
+    await runRegistration(
+      root,
+      "sign-out",
+      "assert.equal(await registration.signOutWithPlugin(), false);"
+    )
+  ).toEqual({ exitCode: 0, stderr: "" });
+  const directory = path.join(root, "plugins", "auth-fixture");
+  await mkdir(directory, { recursive: true });
+  await Promise.all([
+    writeFile(
+      path.join(directory, "auth-form.tsx"),
+      'import "missing-form-dependency"; export const Form = () => null;'
+    ),
+    writeFile(
+      path.join(directory, "client-plugin.ts"),
+      'import "missing-layout-dependency"; export const client = () => ({});'
+    ),
+    writeFile(
+      path.join(directory, "sign-out.ts"),
+      "export const signOut = () => Promise.resolve(true);"
+    ),
+    writeFile(
+      path.join(directory, "chatjs.json"),
+      JSON.stringify({
+        contractVersion: 2,
+        uiBase: "base",
+        id: "auth-fixture",
+        kind: "plugin",
+        files: [
+          "plugins/auth-fixture/auth-form.tsx",
+          "plugins/auth-fixture/sign-out.ts",
+          "plugins/auth-fixture/client-plugin.ts",
+        ],
+        client: { export: "client", layout: true },
+        authenticationUi: { form: "Form", signOut: "signOut" },
+      })
+    ),
+  ]);
+  await syncPlugins(root);
+  expect(
+    await runRegistration(
+      root,
+      "sign-out",
+      "assert.equal(await registration.signOutWithPlugin(), true);"
+    )
+  ).toEqual({ exitCode: 0, stderr: "" });
+});

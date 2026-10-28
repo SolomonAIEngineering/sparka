@@ -33,6 +33,7 @@ const REPOSITORY_ONLY_FILES = new Set([
 
   "scripts/installed-environment-validation.test.ts",
   "lib/db/encrypted-text.test.ts",
+  "lib/electron-auth.test.ts",
   "app/api/eve/[...path]/route-journal.test.ts",
   "lib/db/eve-dispatch.test.ts",
   "lib/eve/operation-token.test.ts",

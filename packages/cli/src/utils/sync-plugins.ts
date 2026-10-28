@@ -248,9 +248,7 @@ const assertUniqueContributions = (
     "video",
   ]);
   const settings = new Set(["general"]);
-  let uploads = false;
-  let billing = false;
-  let modelVisibility = false;
+  const exclusive = new Set<string>();
   for (const plugin of plugins) {
     for (const [keys, seen, label] of [
       [plugin.server?.routers ?? [], routers, "router"],
@@ -264,23 +262,21 @@ const assertUniqueContributions = (
         seen.add(key);
       }
     }
-    if (plugin.billing) {
-      if (billing) {
-        throw new Error("Only one plugin may supply usage billing.");
+    for (const [present, label] of [
+      [plugin.authentication, "authentication"],
+      [plugin.authenticationUi, "authentication UI"],
+      [plugin.navigation, "modified navigation"],
+      [plugin.billing, "usage billing"],
+      [plugin.client?.modelVisibility, "model visibility"],
+      [plugin.client?.uploads, "attachment uploads"],
+    ] as const) {
+      if (present === undefined) {
+        continue;
       }
-      billing = true;
-    }
-    if (plugin.client?.modelVisibility) {
-      if (modelVisibility) {
-        throw new Error("Only one plugin may supply model visibility.");
+      if (exclusive.has(label)) {
+        throw new Error(`Only one plugin may supply ${label}.`);
       }
-      modelVisibility = true;
-    }
-    if (plugin.client?.uploads) {
-      if (uploads) {
-        throw new Error("Only one plugin may supply attachment uploads.");
-      }
-      uploads = true;
+      exclusive.add(label);
     }
   }
   assertPluginDependencies(plugins);
@@ -343,6 +339,9 @@ const renderPluginRegistrations = (
   const signedOut = plugins.find((plugin) => plugin.signedOut);
   const profiles = plugins.filter((plugin) => plugin.sessionProfile);
   const cleanup = plugins.filter((plugin) => plugin.cleanup);
+  const authentication = plugins.find((plugin) => plugin.authentication);
+  const authUi = plugins.find((plugin) => plugin.authenticationUi);
+  const navigation = plugins.filter((plugin) => plugin.navigation);
   const contents = [
     [
       "installed-signed-out",
@@ -363,6 +362,29 @@ export const installedSessionProfiles: readonly SessionProfile[] = [${profiles.m
 import type { CleanupTask } from "@/lib/cleanup/contracts";
 ${cleanup.map((plugin, index) => `if (cleanup${index}.id !== ${JSON.stringify(plugin.cleanup?.id)}) throw new Error("Cleanup identity disagrees with its descriptor.");`).join("\n")}
 export const installedCleanupTasks: readonly CleanupTask[] = [${cleanup.map((_, index) => `cleanup${index}`).join(", ")}];`,
+    ],
+    [
+      "installed-auth",
+      `${authentication ? `import { ${authentication.authentication?.export} as pluginAuth } from "@/plugins/${authentication.id}/auth-server";` : ""}
+import type { AuthenticationIntegration } from "@/lib/authentication-contracts";
+export const installedAuth: AuthenticationIntegration = ${authentication ? "pluginAuth" : "{ plugins: [], trustedOrigins: [], isAuthRoute: () => false }"};`,
+    ],
+    [
+      "installed-auth-ui",
+      `${authUi ? `import { ${authUi.authenticationUi?.form} as pluginForm } from "@/plugins/${authUi.id}/auth-form";` : ""}
+import type { AuthenticationUi } from "@/lib/authentication-contracts";
+export const AuthenticationForm: AuthenticationUi["Form"] = ${authUi ? "pluginForm" : "({ children }) => children"};`,
+    ],
+    [
+      "installed-sign-out",
+      `${authUi ? `import { ${authUi.authenticationUi?.signOut} as pluginSignOut } from "@/plugins/${authUi.id}/sign-out";` : ""}
+import type { AuthenticationUi } from "@/lib/authentication-contracts";
+export const signOutWithPlugin: AuthenticationUi["signOut"] = ${authUi ? "pluginSignOut" : "() => Promise.resolve(false)"};`,
+    ],
+    [
+      "installed-navigation",
+      `${navigation.map((plugin) => `import { ${plugin.navigation?.export} as navigate } from "@/plugins/${plugin.id}/navigation";`).join("\n")}
+export const handleModifiedNavigation: () => boolean = ${navigation.length > 0 ? "navigate" : "() => false"};`,
     ],
     ["installed-billing", billingRegistration(plugins)],
     ["installed-account-ui", accountSummaryRegistration(accountUi)],

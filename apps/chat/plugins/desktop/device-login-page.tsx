@@ -19,9 +19,9 @@ import {
 
 import type { JSX as ReactJSX } from "react";
 
-import authClient from "@/lib/auth-client";
+import authClient from "@/plugins/desktop/desktop-auth-client";
 import { config } from "@/lib/config";
-import { isElectronTransferQuery } from "@/lib/electron-auth";
+import { isElectronTransferQuery } from "@/plugins/desktop/electron-auth";
 
 type DeviceLoginState = "checking-session" | "transferring" | "waiting-for-app";
 

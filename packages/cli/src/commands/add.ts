@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { scaffoldElectron } from "#cli/helpers/scaffold";
 import { assertUiCompatibility } from "#cli/utils/ui-compatibility";
 import { readInstalledPlugins } from "#cli/utils/installed-plugins";
 import {
@@ -221,6 +223,23 @@ const printSetupRequirements = (setup: ReadonlyNative<AddSetup>): void => {
   }
 };
 
+const scaffoldDesktopCompanion = async (
+  cwd: string,
+  plan: ReadonlyNative<InstallationPlan>
+): Promise<void> => {
+  if (plan.plugins.some((plugin: PluginInput) => plugin.id === "desktop")) {
+    if (!existsSync(path.join(cwd, "electron"))) {
+      await scaffoldElectron(cwd, {
+        packageManager: inferPackageManager(cwd),
+        projectName: path.basename(cwd),
+      });
+    }
+    log.info(
+      `Run the web app first, then: cd electron && ${inferPackageManager(cwd)} install && ${inferPackageManager(cwd)} run dev`
+    );
+  }
+};
+
 export const add = new Command("add")
   .description(
     "install registry tools/plugins/providers and compose their ChatJS registrations"
@@ -357,6 +376,7 @@ export const add = new Command("add")
             });
           }
         );
+        await scaffoldDesktopCompanion(cwd, plan);
         printSetupRequirements(setup);
         if (
           plan.plugins.some(

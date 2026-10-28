@@ -169,6 +169,11 @@ const pluginDefinitionBase = z.object({
     .object({ export: identifier, authenticator: z.string().min(1) })
     .optional(),
   cleanup: z.object({ export: identifier, id: pluginIdSchema }).optional(),
+  authentication: z.object({ export: identifier }).optional(),
+  authenticationUi: z
+    .object({ form: identifier, signOut: identifier })
+    .optional(),
+  navigation: z.object({ export: identifier }).optional(),
   server: z
     .object({
       export: identifier,
