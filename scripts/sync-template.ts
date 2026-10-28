@@ -83,8 +83,8 @@ const removeTemplateReferences = async (destination: string): Promise<void> => {
 };
 
 const rewriteTemplateStyles = async (destination: string): Promise<void> => {
-  // Replace monorepo-aware @source paths with single-app path in globals.css
-  const globalsCssPath = join(destination, "app", "globals.css");
+  // Replace monorepo-aware @source paths with single-app path in chatjs.css
+  const globalsCssPath = join(destination, "app", "chatjs.css");
   let globalsCss = await readFile(globalsCssPath, "utf-8");
   globalsCss = globalsCss.replace(
     /@source "\.\.\/node_modules\/streamdown\/dist\/\*\.js";\n@source "\.\.\/\.\.\/\.\.\/node_modules\/streamdown\/dist\/\*\.js";/u,

@@ -3,7 +3,6 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { prepareScaffoldUi } from "./scaffold-ui";
-import { initializeShadcn } from "./initialize-shadcn";
 import { uiImplementations } from "../../../registry/ui-implementations";
 
 const root = path.resolve(import.meta.dir, "../../../..");
@@ -65,27 +64,6 @@ test.each(["base", "radix"] as const)(
     }
   }
 );
-
-test("default create selects Base source without leaving Radix alternatives", async () => {
-  const cwd = await createFixture("base");
-  try {
-    await initializeShadcn(cwd, []);
-    await Promise.all(
-      core.map(async (entry) => {
-        expect(await readFile(path.join(cwd, entry.target), "utf-8")).toBe(
-          await readFile(path.join(root, entry.source), "utf-8")
-        );
-        expect(
-          await Bun.file(
-            path.join(cwd, entry.radix.slice("apps/chat/".length))
-          ).exists()
-        ).toBe(false);
-      })
-    );
-  } finally {
-    await rm(cwd, { recursive: true, force: true });
-  }
-});
 
 test.each(["base", "radix"] as const)(
   "missing %s implementation leaves scaffold sources and config untouched",

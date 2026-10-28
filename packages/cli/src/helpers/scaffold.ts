@@ -184,7 +184,7 @@ const applyChatTemplateSourceTransforms = async (
     ["<GitHubLink />", ""],
   ]);
 
-  const globalsCssPath = pathModule.join(destination, "app", "globals.css");
+  const globalsCssPath = pathModule.join(destination, "app", "chatjs.css");
   await replaceInFile(globalsCssPath, [
     [
       '@source "../node_modules/streamdown/dist/*.js";\n@source "../../../node_modules/streamdown/dist/*.js";',
