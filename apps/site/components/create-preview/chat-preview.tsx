@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import { decodePreset, DEFAULT_PRESET_CONFIG } from "shadcn/preset";
 import { useTheme } from "next-themes";
 import { getPresetCode } from "@/vendor/shadcn-create/lib/preset-code";
@@ -20,38 +21,49 @@ import * as native from "./ui/base";
 import * as nativeRadix from "./ui/radix";
 import "../../app/create/preview/preview.css";
 
-const BaseNewChat = ({ onSelect }: { readonly onSelect: () => void }) => {
+interface SceneButtonProps {
+  readonly onSelect: () => void;
+  readonly children: ReactNode;
+  readonly className?: string;
+  readonly isActive?: boolean;
+}
+
+const BaseSceneButton = ({
+  onSelect,
+  children,
+  ...props
+}: SceneButtonProps) => {
   const { setOpenMobile } = native.useSidebar();
   return (
     <native.SidebarMenuItem>
       <native.SidebarMenuButton
-        aria-label="New chat"
-        className="mt-4"
+        {...props}
         onClick={() => {
           onSelect();
           setOpenMobile(false);
         }}
       >
-        <PreviewIcon name="plus" />
-        <span>New chat</span>
+        {children}
       </native.SidebarMenuButton>
     </native.SidebarMenuItem>
   );
 };
-const RadixNewChat = ({ onSelect }: { readonly onSelect: () => void }) => {
+const RadixSceneButton = ({
+  onSelect,
+  children,
+  ...props
+}: SceneButtonProps) => {
   const { setOpenMobile } = nativeRadix.useSidebar();
   return (
     <nativeRadix.SidebarMenuItem>
       <nativeRadix.SidebarMenuButton
-        aria-label="New chat"
-        className="mt-4"
+        {...props}
         onClick={() => {
           onSelect();
           setOpenMobile(false);
         }}
       >
-        <PreviewIcon name="plus" />
-        <span>New chat</span>
+        {children}
       </nativeRadix.SidebarMenuButton>
     </nativeRadix.SidebarMenuItem>
   );
@@ -91,7 +103,7 @@ export const ChatPreview = () => {
 
   const uploads = installation.plugins.includes("attachment-uploads");
   const radix = params.base === "radix";
-  const NewChat = radix ? RadixNewChat : BaseNewChat;
+  const SceneButton = radix ? RadixSceneButton : BaseSceneButton;
   const hasAttachments = attached && uploads;
   const welcome = view === "New chat" && messages.length === 0;
   const direction = params.rtl ? "rtl" : "ltr";
@@ -217,6 +229,7 @@ export const ChatPreview = () => {
     <>
       <ControlledChatComposer
         primitives={{ InputGroup, InputGroupAddon, InputGroupButton }}
+        autoFocus={!welcome && messages.length > 0}
         draft={draft}
         onDraftChange={setDraft}
         onSubmit={send}
@@ -338,7 +351,8 @@ export const ChatPreview = () => {
                   ChatJS
                 </span>
               </div>
-              <NewChat
+              <SceneButton
+                className="mt-4"
                 onSelect={() => {
                   selectScene("preview");
                   setMessages([]);
@@ -346,7 +360,10 @@ export const ChatPreview = () => {
                   setAttached(false);
                   setNotice("Started a new preview conversation.");
                 }}
-              />
+              >
+                <PreviewIcon name="plus" />
+                <span>New chat</span>
+              </SceneButton>
             </SidebarMenu>
           }
           footer={
@@ -365,17 +382,15 @@ export const ChatPreview = () => {
         >
           <SidebarMenu>
             <span className="text-muted-foreground px-2 text-xs">Today</span>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                isActive
-                onClick={() => {
-                  selectScene("preview-02");
-                  setMessages([]);
-                }}
-              >
-                Building something good
-              </SidebarMenuButton>
-            </SidebarMenuItem>
+            <SceneButton
+              isActive
+              onSelect={() => {
+                selectScene("preview-02");
+                setMessages([]);
+              }}
+            >
+              Building something good
+            </SceneButton>
             <SidebarMenuItem>
               <SidebarMenuButton
                 onClick={() => {

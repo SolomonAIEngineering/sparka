@@ -63,6 +63,10 @@ for (const base of ["base", "radix"] as const) {
           page.getByText("A native composer message", { exact: true })
         ).toBeVisible();
         await expect(editor).toHaveText("");
+        await expect(editor).toBeFocused();
+        await page.keyboard.type("A follow-up without clicking");
+        await expect(editor).toHaveText("A follow-up without clicking");
+        await editor.fill("");
 
         await page.evaluate(() => {
           window.postMessage(
@@ -157,6 +161,22 @@ for (const base of ["base", "radix"] as const) {
         await expect(page.getByRole("dialog")).toBeHidden();
         await expect(editor).toHaveText("");
         await expect(send).toBeDisabled();
+        if (width === 390) {
+          await toggle.click();
+          await expect(page.getByRole("dialog")).toBeVisible();
+        }
+        await page
+          .getByRole("button", { name: "Building something good", exact: true })
+          .click();
+        await expect(page.getByRole("dialog")).toBeHidden();
+        await expect(
+          page.getByRole("heading", {
+            name: "A small start. A great experience.",
+          })
+        ).toBeVisible();
+        if (width === 390 && rtl) {
+          await uiVerify.snapshot("conversation after mobile selection");
+        }
         expect(
           await page.evaluate(
             () => document.documentElement.scrollWidth <= innerWidth
