@@ -31,7 +31,10 @@ const brandingJson = JSON.stringify(
 );
 const writeBranding = async (): Promise<void> => {
   try {
-    await writeFile(new URL("../branding.json", import.meta.url), brandingJson);
+    await writeFile(
+      new URL("../branding.json", import.meta.url),
+      `${brandingJson}\n`
+    );
     console.log("branding.json written:", { appName, appPrefix, appUrl });
   } catch (error) {
     console.error(error);
