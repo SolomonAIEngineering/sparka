@@ -41,5 +41,7 @@ test.each(["creating", "bound", "deleting", "deleted"])(
     } finally {
       await database.close();
     }
-  }
+  },
+  // PGlite's cold WASM startup can exceed Vitest's 5s default on CI.
+  20_000
 );
