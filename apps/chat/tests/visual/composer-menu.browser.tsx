@@ -362,7 +362,25 @@ test("one ordered menu selects and clears tools, attaches files, and toggles con
         .getByRole("menuitemcheckbox", { name: "Documentation" })
         .click();
     });
-    expect(state.toggle).toHaveBeenCalledWith({ enabled: false, id: "docs" });
+    expect(state.toggle).toHaveBeenCalledExactlyOnceWith({
+      enabled: false,
+      id: "docs",
+    });
+    await expect
+      .element(page.getByRole("menuitemcheckbox", { name: "Documentation" }))
+      .toBeVisible();
+    const connector = page
+      .getByRole("menuitemcheckbox", { name: "Documentation" })
+      .element();
+    if (!(connector instanceof HTMLElement)) {
+      throw new Error("Missing connector item");
+    }
+    connector.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(state.toggle).toHaveBeenCalledTimes(2);
+    await expect
+      .element(page.getByRole("menuitemcheckbox", { name: "Documentation" }))
+      .toBeVisible();
     await takeSnapshot("composer-connectors");
     await page.screenshot({ path: "__screenshots__/composer-connectors.png" });
   } finally {

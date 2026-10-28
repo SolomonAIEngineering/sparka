@@ -5,32 +5,6 @@ const radixAttributeNames = new Map([
   ["Checkbox.readOnly", "aria-readonly"],
   ["DirectionProvider.direction", "dir"],
 ]);
-const isFalseAttribute = (attribute: ts.JsxAttribute): boolean =>
-  attribute.initializer !== undefined &&
-  ts.isJsxExpression(attribute.initializer) &&
-  attribute.initializer.expression?.kind === ts.SyntaxKind.FalseKeyword;
-
-const containsSearchBackdrop = (node: ts.Node): boolean => {
-  if (
-    ts.isCallExpression(node) &&
-    ts.isIdentifier(node.expression) &&
-    node.expression.text === "createPortal"
-  ) {
-    const [content] = node.arguments;
-    return (
-      content !== undefined &&
-      ts.isJsxSelfClosingElement(content) &&
-      ts.isIdentifier(content.tagName) &&
-      content.tagName.text === "DialogOverlay"
-    );
-  }
-  return (
-    ts.forEachChild(node, (child) =>
-      containsSearchBackdrop(child) ? true : undefined
-    ) === true
-  );
-};
-
 /** Emit maintained ChatJS compositions using the selected shadcn native API. */
 export const transformUiSource = (
   source: string,
@@ -79,61 +53,9 @@ export const transformUiSource = (
     return source;
   }
   let changed = false;
-  const omitSearchBackdrop =
-    fileName.endsWith("/search-chats.tsx") && containsSearchBackdrop(file);
   const transformed = ts.transform(file, [
     (context) => {
       const { factory } = context;
-      const withoutSearchBackdrop = (node: ts.Node): ts.Node | undefined => {
-        if (
-          ts.isJsxExpression(node) &&
-          (containsSearchBackdrop(node) ||
-            node.getText(file).includes("Base UI omits nested backdrops"))
-        ) {
-          return undefined;
-        }
-        if (
-          ts.isImportDeclaration(node) &&
-          node.importClause?.namedBindings &&
-          ts.isNamedImports(node.importClause.namedBindings)
-        ) {
-          const elements = node.importClause.namedBindings.elements.filter(
-            (binding) =>
-              !["createPortal", "DialogOverlay"].includes(
-                (binding.propertyName ?? binding.name).text
-              )
-          );
-          if (elements.length === 0) {
-            return undefined;
-          }
-          return factory.updateImportDeclaration(
-            node,
-            node.modifiers,
-            factory.updateImportClause(
-              node.importClause,
-              node.importClause.phaseModifier,
-              node.importClause.name,
-              factory.updateNamedImports(
-                node.importClause.namedBindings,
-                elements
-              )
-            ),
-            node.moduleSpecifier,
-            node.attributes
-          );
-        }
-        if (ts.isObjectBindingPattern(node)) {
-          return factory.updateObjectBindingPattern(
-            node,
-            node.elements.filter(
-              (binding) =>
-                !ts.isIdentifier(binding.name) ||
-                !["isMobile", "openMobile"].includes(binding.name.text)
-            )
-          );
-        }
-        return node;
-      };
       const withChildren = (
         element: ts.JsxElement,
         children: readonly ts.JsxChild[]
@@ -185,47 +107,11 @@ export const transformUiSource = (
         if (ts.isJsxElement(expression)) {
           return hasChildren ? withChildren(expression, children) : expression;
         }
-        // The editable user bubble optionally replaces its native div with a button.
-        if (
-          component === "BubbleContent" &&
-          ts.isConditionalExpression(expression)
-        ) {
-          const branch = (value: ts.Expression): ts.Expression => {
-            if (ts.isIdentifier(value) && value.text === "undefined") {
-              return factory.createJsxElement(
-                factory.createJsxOpeningElement(
-                  factory.createIdentifier("div"),
-                  undefined,
-                  factory.createJsxAttributes([])
-                ),
-                children,
-                factory.createJsxClosingElement(factory.createIdentifier("div"))
-              );
-            }
-            const child = renderChild(value, children, component);
-            if (ts.isJsxElement(child)) {
-              return child;
-            }
-            throw new Error(
-              `Unsupported conditional native render in ${fileName}`
-            );
-          };
-          return factory.createJsxExpression(
-            undefined,
-            factory.updateConditionalExpression(
-              expression,
-              expression.condition,
-              expression.questionToken,
-              branch(expression.whenTrue),
-              expression.colonToken,
-              branch(expression.whenFalse)
-            )
-          );
-        }
         if (
           !hasChildren &&
           !ts.isArrowFunction(expression) &&
-          !ts.isFunctionExpression(expression)
+          !ts.isFunctionExpression(expression) &&
+          !ts.isConditionalExpression(expression)
         ) {
           return factory.createJsxExpression(undefined, expression);
         }
@@ -234,14 +120,7 @@ export const transformUiSource = (
         );
       };
       const visit: ts.Visitor = (node) => {
-        const prepared = omitSearchBackdrop
-          ? withoutSearchBackdrop(node)
-          : node;
-        if (prepared === undefined) {
-          changed = true;
-          return [];
-        }
-        const visited = ts.visitEachChild(prepared, visit, context);
+        const visited = ts.visitEachChild(node, visit, context);
         if (!ts.isJsxElement(visited) && !ts.isJsxSelfClosingElement(visited)) {
           return visited;
         }
@@ -316,61 +195,13 @@ export const transformUiSource = (
             return;
           }
           if (
-            name === "closeOnClick" &&
-            component.startsWith("DropdownMenu") &&
-            isFalseAttribute(attribute)
+            (name === "closeOnClick" && component.startsWith("DropdownMenu")) ||
+            (component === "HoverCardTrigger" &&
+              ["delay", "closeDelay"].includes(name))
           ) {
-            properties.push(
-              factory.createJsxAttribute(
-                factory.createIdentifier("onSelect"),
-                factory.createJsxExpression(
-                  undefined,
-                  factory.createArrowFunction(
-                    undefined,
-                    undefined,
-                    [
-                      factory.createParameterDeclaration(
-                        undefined,
-                        undefined,
-                        "event"
-                      ),
-                    ],
-                    undefined,
-                    factory.createToken(ts.SyntaxKind.EqualsGreaterThanToken),
-                    factory.createBlock(
-                      [
-                        factory.createExpressionStatement(
-                          factory.createCallExpression(
-                            factory.createPropertyAccessExpression(
-                              factory.createIdentifier("event"),
-                              "preventDefault"
-                            ),
-                            undefined,
-                            []
-                          )
-                        ),
-                      ],
-                      true
-                    )
-                  )
-                )
-              )
+            throw new Error(
+              `Unsupported native behavior in ${fileName}: ${component}.${name}. Declare an explicit native implementation.`
             );
-            changed = true;
-            return;
-          }
-          if (name === "closeOnClick" && component.startsWith("DropdownMenu")) {
-            changed = true;
-            return;
-          }
-          // This maintained compound component splits root and trigger across functions.
-          if (
-            fileName.endsWith("ai-elements/context.tsx") &&
-            component === "HoverCardTrigger" &&
-            ["delay", "closeDelay"].includes(name)
-          ) {
-            changed = true;
-            return;
           }
           if (name === "className") {
             properties.push(
@@ -383,34 +214,6 @@ export const transformUiSource = (
         };
         for (const attribute of opening.attributes.properties) {
           transformAttribute(attribute);
-        }
-        if (
-          fileName.endsWith("ai-elements/context.tsx") &&
-          component === "HoverCard" &&
-          !properties.some(
-            (attribute) =>
-              ts.isJsxAttribute(attribute) &&
-              ts.isIdentifier(attribute.name) &&
-              attribute.name.text === "openDelay"
-          )
-        ) {
-          properties.unshift(
-            factory.createJsxAttribute(
-              factory.createIdentifier("openDelay"),
-              factory.createJsxExpression(
-                undefined,
-                factory.createNumericLiteral(0)
-              )
-            ),
-            factory.createJsxAttribute(
-              factory.createIdentifier("closeDelay"),
-              factory.createJsxExpression(
-                undefined,
-                factory.createNumericLiteral(0)
-              )
-            )
-          );
-          changed = true;
         }
         const children = ts.isJsxElement(visited) ? [...visited.children] : [];
         if (render) {

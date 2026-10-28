@@ -5,10 +5,10 @@ import type { ComposerControlProps } from "@/components/composer/control";
 import React from "react";
 import { toast } from "sonner";
 
+import { ConnectorMenuItem } from "./connector-menu-item";
 import { InternalLink } from "@/components/internal-link";
 
 import {
-  DropdownMenuCheckboxItem,
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
@@ -113,22 +113,19 @@ const ConnectorsControl = ({
                 readonly userId: string | null;
                 readonly name: string;
               }) => (
-                <DropdownMenuCheckboxItem
+                <ConnectorMenuItem
                   key={connector.id}
                   checked={connector.enabled}
                   disabled={disabled === true || connector.userId === null}
-                  closeOnClick={false}
-                  onCheckedChange={(
-                    enabled: boolean | "indeterminate"
-                  ): void => {
+                  onActivate={() => {
                     toggleEnabled({
-                      enabled: enabled === true,
+                      enabled: !connector.enabled,
                       id: connector.id,
                     });
                   }}
                 >
                   <span className="truncate">{connector.name}</span>
-                </DropdownMenuCheckboxItem>
+                </ConnectorMenuItem>
               )
             )
           )}

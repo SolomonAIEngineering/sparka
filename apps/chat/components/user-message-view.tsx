@@ -1,13 +1,14 @@
 "use client";
 
 import React from "react";
+import { EditableBubble } from "./editable-bubble";
 
 import {
   Message,
   MessageContent,
   MessageFooter,
 } from "@/components/ui/message";
-import { Bubble, BubbleContent } from "@/components/ui/bubble";
+import { Bubble } from "@/components/ui/bubble";
 import type { ReadonlyReactNode } from "@/lib/readonly-react-node";
 import { hasCustomContent } from "@/components/custom-content";
 
@@ -56,35 +57,34 @@ export const UserMessageView = ({
       )}
       {!hasCustomContent(editor) && text && (
         <Bubble align="end" variant="muted">
-          <BubbleContent
-            data-testid="message-content"
-            render={
-              onEdit ? (
-                <button
-                  aria-disabled={editDisabled}
-                  aria-label={text}
-                  className="cursor-pointer select-text"
-                  onClick={(event) => {
-                    if (editDisabled) {
-                      return;
-                    }
-                    const selection = globalThis.getSelection();
-                    if (
-                      selection !== null &&
-                      selection.toString() !== "" &&
-                      event.currentTarget.contains(selection.anchorNode)
-                    ) {
-                      return;
-                    }
-                    onEdit();
-                  }}
-                  type="button"
-                />
-              ) : undefined
+          <EditableBubble
+            button={
+              onEdit
+                ? {
+                    "aria-disabled": editDisabled,
+                    "aria-label": text,
+                    className: "cursor-pointer select-text",
+                    onClick: (event) => {
+                      if (editDisabled) {
+                        return;
+                      }
+                      const selection = globalThis.getSelection();
+                      if (
+                        selection !== null &&
+                        selection.toString() !== "" &&
+                        event.currentTarget.contains(selection.anchorNode)
+                      ) {
+                        return;
+                      }
+                      onEdit();
+                    },
+                    type: "button",
+                  }
+                : undefined
             }
           >
             <pre className="font-sans whitespace-pre-wrap">{text}</pre>
-          </BubbleContent>
+          </EditableBubble>
         </Bubble>
       )}
       {hasCustomContent(editor) ? (

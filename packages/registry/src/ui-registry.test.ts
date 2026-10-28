@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { selectUiSources } from "../ui-implementations";
 import { registry } from "../registry";
 import { pluginDefinitionSchema, toolDefinitionSchema } from "../metadata";
 import { registryItemForUi } from "../ui-registry";
@@ -79,7 +80,21 @@ test("Radix registry source converts native composition without rewriting unrela
       ),
     }))
   );
-  const radix = registryItemForUi({ ...item, files }, "radix");
+  const selected = await selectUiSources(
+    new Map(
+      files.map((file) => [
+        file.target?.replace(/^~\//u, "") ?? file.path,
+        file.content,
+      ])
+    ),
+    "radix",
+    async (entry) =>
+      await readFile(
+        path.resolve(import.meta.dir, "../../..", entry.radix),
+        "utf-8"
+      )
+  );
+  const radix = registryItemForUi({ ...item, files }, "radix", selected);
   const baseButton = files.find((file) =>
     file.path.endsWith("share-button.tsx")
   );
@@ -94,4 +109,38 @@ test("Radix registry source converts native composition without rewriting unrela
       radix.files?.find((entry) => entry.path === file.path)?.content
     ).toBe(file.content);
   }
+});
+
+test("alternative providers sharing installation targets retain their own source", async () => {
+  await Promise.all(
+    registry.items
+      .filter(
+        (item) =>
+          item.name.endsWith("-gateway") || item.name.endsWith("-storage")
+      )
+      .map(async (item) => {
+        const files = await Promise.all(
+          (item.files ?? []).map(async (file) => ({
+            ...file,
+            content: await readFile(
+              path.join(import.meta.dir, "..", file.path),
+              "utf-8"
+            ),
+          }))
+        );
+        // A selection map must never replace unrelated provider or shared source.
+        const foreignSelection = new Map(
+          files.map((file) => [
+            file.target?.replace(/^~\//u, "") ?? file.path,
+            "foreign provider",
+          ])
+        );
+        const output = registryItemForUi(
+          { ...item, files },
+          "radix",
+          foreignSelection
+        );
+        expect(output.files).toEqual(files);
+      })
+  );
 });

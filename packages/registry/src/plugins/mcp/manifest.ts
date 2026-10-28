@@ -18,6 +18,7 @@ const mcpFiles = [
   "plugins/mcp/ui/mcp-create-dialog.tsx",
   "plugins/mcp/ui/mcp-details-page.tsx",
   "plugins/mcp/composer.tsx",
+  "plugins/mcp/connector-menu-item.tsx",
   "plugins/mcp/db/mcp-schema.ts",
   "plugins/mcp/db/encrypted-text.ts",
   "plugins/mcp/mcp-env.ts",

@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { uiverifyPlugin } from "@uiverify/vitest/plugin";
 import { defineConfig } from "vitest/config";
 import type { Alias, AliasOptions } from "vite";
+import { uiImplementations } from "../registry/ui-implementations";
 import { transformUiSource } from "../registry/ui-source";
 import interactions from "../registry/visual/vitest.config";
 import pages from "./vitest.config";
@@ -56,7 +57,10 @@ export default defineConfig({
         : "ltr"
     ),
   },
-  cacheDir: path.join(root, "node_modules/.vite/chat-radix"),
+  cacheDir: path.join(
+    root,
+    `node_modules/.vite/chat-${uiBase}-${interactionMode ? "interactions" : "pages"}`
+  ),
   resolve: {
     ...reference.resolve,
     // Generated sources and the shared test harness must use one native context.
@@ -87,6 +91,20 @@ export default defineConfig({
           (id.startsWith(path.join(root, "apps/chat")) ||
             id.startsWith(path.join(root, "packages/registry/src")))
         ) {
+          const implementation = uiImplementations.find(
+            (entry) =>
+              id === path.join(root, entry.source) ||
+              id === path.join(root, "apps/chat", entry.target)
+          );
+          if (implementation) {
+            return readFileSync(
+              path.join(
+                root,
+                uiBase === "base" ? implementation.source : implementation.radix
+              ),
+              "utf-8"
+            );
+          }
           return transformUiSource(source, id, uiBase);
         }
         return null;
@@ -110,6 +128,7 @@ export default defineConfig({
     include: interactionMode
       ? [
           "../../apps/chat/tests/visual/direction.browser.tsx",
+          "../../apps/chat/tests/visual/native-feature-boundaries.browser.tsx",
           "../../apps/chat/tests/visual/composer-interactions.browser.tsx",
           "../../apps/chat/tests/visual/composer-menu.browser.tsx",
           "../../apps/chat/tests/visual/conversation-native.browser.tsx",

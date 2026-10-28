@@ -16,6 +16,7 @@ const sourceFiles = [
   "routes/project-page.tsx",
   "server-plugin.ts",
   "ui/chat-contributions.tsx",
+  "ui/move-menu-item.tsx",
   "ui/delete-project-dialog.tsx",
   "ui/eve-move-project-dialog.tsx",
   "ui/eve-project-home.tsx",
