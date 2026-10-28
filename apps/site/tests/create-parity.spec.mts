@@ -66,7 +66,10 @@ for (const base of ["base", "radix"] as const) {
         await expect(editor).toBeFocused();
         await page.keyboard.type("A follow-up without clicking");
         await expect(editor).toHaveText("A follow-up without clicking");
-        await editor.fill("");
+        await page.keyboard.press("ControlOrMeta+A");
+        await page.keyboard.press("Backspace");
+        await expect(editor).toHaveText("");
+        await expect(send).toBeDisabled();
 
         await page.evaluate(() => {
           window.postMessage(
