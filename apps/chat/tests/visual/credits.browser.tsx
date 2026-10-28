@@ -26,7 +26,12 @@ vi.mock("@/plugins/credits/use-credits", () => ({
   useGetCredits: () => useContext(Balance),
 }));
 vi.mock("@/lib/auth-client", () => ({ default: {} }));
-vi.mock("@/lib/electron-auth", () => ({ isElectronRenderer: () => false }));
+vi.mock("@/composition/generated/installed-sign-out", () => ({
+  signOutWithPlugin: async (): Promise<boolean> => await Promise.resolve(false),
+}));
+vi.mock("@/composition/generated/installed-navigation", () => ({
+  handleModifiedNavigation: () => false,
+}));
 vi.mock("next/navigation", () => ({ useRouter: () => ({}) }));
 vi.mock("@/providers/session-provider", () => ({
   useSession: () => ({

@@ -2,6 +2,7 @@ import { verifyInstallationParity } from "./installation-parity";
 import { generateInstallation } from "../../registry/scripts/installation-generator";
 import { pluginRegistrationTargets } from "../src/utils/sync-plugins";
 import { pluginDefinitionSchema } from "../../registry/metadata";
+import { parsePackageJson } from "../src/helpers/package-manifest";
 import { expect, it } from "bun:test";
 import { existsSync } from "node:fs";
 import { readdir, readFile, writeFile } from "node:fs/promises";
@@ -10,6 +11,7 @@ import { run } from "./run-command";
 
 const selections = [
   "none",
+  "desktop",
   "projects",
   "feedback",
   "followup-suggestions",
@@ -30,6 +32,7 @@ const pluginTables = [
 ];
 const expectedTables: Record<(typeof selections)[number], readonly string[]> = {
   none: [],
+  desktop: [],
   projects: ["Project", "EveChatProject"],
   feedback: ["EveVote"],
   "followup-suggestions": ["EveFollowup"],
@@ -82,6 +85,18 @@ export const testChatPluginSelections = (
       expect(existsSync(path.join(cwd, "app/(chat)/share/[id]/page.tsx"))).toBe(
         selection === "sharing"
       );
+      expect(
+        existsSync(path.join(cwd, "app/(auth)/device-login/page.tsx"))
+      ).toBe(selection === "desktop");
+      expect(existsSync(path.join(cwd, "electron/package.json"))).toBe(
+        selection === "desktop"
+      );
+      const installedPackage = parsePackageJson(
+        await readFile(path.join(cwd, "package.json"), "utf-8")
+      );
+      expect(
+        "@better-auth/electron" in (installedPackage.dependencies ?? {})
+      ).toBe(selection === "desktop");
       const pluginDirectory = path.join(cwd, "plugins");
       const installedPlugins = existsSync(pluginDirectory)
         ? await readdir(pluginDirectory)
@@ -131,6 +146,55 @@ export const testChatPluginSelections = (
         name
       );
       await run(cwd, ["bun", "run", "test:types"]);
+      if (selection === "desktop") {
+        const companion = path.join(cwd, "electron");
+        await run(companion, ["bun", "install"]);
+        await run(companion, ["bun", "run", "build"]);
+        expect(existsSync(path.join(companion, "dist/main.js"))).toBe(true);
+        const configuration = await readFile(
+          path.join(companion, "src/config.ts"),
+          "utf-8"
+        );
+        expect(configuration).toContain("../branding.json");
+        expect(configuration).not.toContain("@/");
+        expect(configuration).not.toContain("../lib/config");
+        await writeFile(
+          path.join(companion, "custom.txt"),
+          "preserve companion changes"
+        );
+        await run(cwd, ["node", cliEntry, "add", "desktop", "--yes"]);
+        expect(
+          await readFile(path.join(companion, "custom.txt"), "utf-8")
+        ).toBe("preserve companion changes");
+        const createdName = "chat-created-desktop";
+        await run(root, [
+          "node",
+          cliEntry,
+          "create",
+          createdName,
+          "--gateway",
+          "openai",
+          "--yes",
+          "--electron",
+          "--no-projects",
+          "--no-mcp",
+          "--no-documents",
+          "--no-attachments",
+        ]);
+        const created = path.join(root, createdName);
+        expect(existsSync(path.join(created, "electron/package.json"))).toBe(
+          true
+        );
+        expect(
+          existsSync(path.join(created, "plugins/desktop/chatjs.json"))
+        ).toBe(true);
+        expect(
+          await readFile(
+            path.join(created, "composition/generated/installed-auth.ts"),
+            "utf-8"
+          )
+        ).toContain("@/plugins/desktop/auth-server");
+      }
 
       await writeFile(
         path.join(cwd, "plugin-schema.config.ts"),
@@ -191,7 +255,7 @@ import { chatLinks } from "./lib/chat-plugins";
 import { usageBilling, canSpend } from "./composition/generated/installed-billing";
 assert.equal(usageBilling !== undefined, ${selection === "credits"});
 ${selection === "none" ? 'assert.equal(await canSpend("fixture-owner"), true);' : ""}
-assert.equal(installedChatPlugins.length, ${selection === "none" || selection === "credits" || selection === "model-preferences" ? 0 : 1});
+assert.equal(installedChatPlugins.length, ${selection === "none" || selection === "desktop" || selection === "credits" || selection === "model-preferences" ? 0 : 1});
 assert.deepEqual(await chatLinks("fixture-owner", []), new Map());
 for (const plugin of installedChatPlugins) {
   assert.equal(typeof plugin.${lifecycleMethod}, "function");

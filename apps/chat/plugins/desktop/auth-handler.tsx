@@ -1,4 +1,8 @@
 "use client";
+import type {
+  ElectronAuthErrorContext,
+  ElectronRendererAuthState,
+} from "./bridge";
 
 import { nonEmptyText } from "@/components/text-value";
 
@@ -10,9 +14,8 @@ import type { JSX as ReactJSX } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 
-import authClient from "@/lib/auth-client";
+import authClient from "@/plugins/desktop/desktop-auth-client";
 
-import { config } from "@/lib/config";
 import { useRouter } from "next/navigation";
 
 const ElectronAuthOverlay = ({
@@ -117,7 +120,6 @@ const ElectronAuthOverlay = ({
  * @returns {ReactJSX.Element | null} The current overlay, or null outside the enabled desktop flow.
  */
 export const ElectronAuthHandler = (): ReactJSX.Element | null => {
-  const isDesktopAppEnabled = config.desktopApp.enabled;
   const router = useRouter();
   const [authState, setAuthState] = useState<ElectronRendererAuthState>({
     message: null,
@@ -125,22 +127,14 @@ export const ElectronAuthHandler = (): ReactJSX.Element | null => {
   });
 
   useEffect((): (() => void) | undefined => {
-    if (!isDesktopAppEnabled) {
-      return undefined;
-    }
-
     const id = authClient.ensureElectronRedirect();
 
     return (): void => {
       clearInterval(id);
     };
-  }, [isDesktopAppEnabled]);
+  }, []);
 
   useEffect((): (() => void) | undefined => {
-    if (!isDesktopAppEnabled) {
-      return undefined;
-    }
-
     if (typeof window.requestAuth !== "function") {
       return undefined;
     }
@@ -210,11 +204,7 @@ export const ElectronAuthHandler = (): ReactJSX.Element | null => {
       unsubscribeAuthError();
       unsubscribeAuthState();
     };
-  }, [isDesktopAppEnabled, router]);
-
-  if (!isDesktopAppEnabled) {
-    return null;
-  }
+  }, [router]);
 
   const overlayKey = `${authState.status}:${authState.message ?? ""}:${
     authState.status === "idle" ? "" : (authState.detail ?? "")

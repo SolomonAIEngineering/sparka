@@ -10,7 +10,6 @@ import { DirectionProvider } from "@/components/ui/direction";
 import React from "react";
 import { Toaster } from "sonner";
 
-import { ElectronAuthHandler } from "@/components/electron-auth-handler";
 import { ThemeProvider } from "@/components/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { installedLayoutComponents } from "@/composition/generated/installed-layout";
@@ -94,7 +93,6 @@ const RootLayout = ({
       ) : null}
     </head>
     <body className="antialiased">
-      <ElectronAuthHandler />
       <Script
         src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"
         strategy="afterInteractive"

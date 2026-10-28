@@ -243,19 +243,6 @@ const authenticationConfigSchema = authenticationConfigObjectSchema.default(
   AUTHENTICATION_DEFAULTS
 );
 
-const desktopAppConfigObjectSchema = z.object({
-  enabled: z
-    .boolean()
-    .describe("Enable Electron desktop auth/runtime integration"),
-});
-
-const DESKTOP_APP_DEFAULTS = {
-  enabled: false,
-};
-
-const desktopAppConfigSchema =
-  desktopAppConfigObjectSchema.default(DESKTOP_APP_DEFAULTS);
-
 const configDescriptionSchema = z.object({
   ai: installedGatewaySchema,
   anonymous: anonymousConfigObjectSchema,
@@ -269,7 +256,6 @@ const configDescriptionSchema = z.object({
   appUrl: z.url().default("https://your-domain.com"),
   attachments: attachmentsConfigObjectSchema,
   authentication: authenticationConfigObjectSchema,
-  desktopApp: desktopAppConfigObjectSchema,
   features: featuresConfigObjectSchema,
   legal: z.object({
     governingLaw: z.string(),
@@ -295,7 +281,6 @@ const configSchema = z.object({
   appUrl: z.url().default("https://your-domain.com"),
   attachments: attachmentsConfigSchema,
   authentication: authenticationConfigSchema,
-  desktopApp: desktopAppConfigSchema,
   features: featuresConfigSchema,
   legal: z
     .object({
@@ -341,8 +326,6 @@ type AttachmentsConfig = z.infer<typeof attachmentsConfigSchema>;
 type FeaturesConfig = z.infer<typeof featuresConfigSchema>;
 
 type AuthenticationConfig = z.infer<typeof authenticationConfigSchema>;
-
-type DesktopAppConfig = z.infer<typeof desktopAppConfigSchema>;
 
 // Gateway-aware input types: model IDs narrowed per gateway for autocomplete
 type ZodConfigInput = z.input<typeof configSchema>;
@@ -447,9 +430,6 @@ export {
   configDescriptionSchema,
   configSchema,
   defineConfig,
-  DESKTOP_APP_DEFAULTS,
-  desktopAppConfigObjectSchema,
-  desktopAppConfigSchema,
   FEATURES_DEFAULTS,
   featuresConfigObjectSchema,
   featuresConfigSchema,
@@ -462,7 +442,6 @@ export type {
   AuthenticationConfig,
   Config,
   ConfigInput,
-  DesktopAppConfig,
   FeaturesConfig,
   PricingConfig,
 };

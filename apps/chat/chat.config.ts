@@ -102,9 +102,6 @@ const config = defineConfig({
     // Requires VERCEL_APP_CLIENT_ID + VERCEL_APP_CLIENT_SECRET
     vercel: true,
   },
-  desktopApp: {
-    enabled: true,
-  },
   features: {
     parallelResponses: true,
   },

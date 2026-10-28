@@ -164,6 +164,11 @@ const pluginDefinitionBase = z.object({
   requiresPersistentSandbox: z.literal(true).optional(),
   chat: z.object({ export: identifier }).optional(),
   billing: z.object({ export: identifier }).optional(),
+  authentication: z.object({ export: identifier }).optional(),
+  authenticationUi: z
+    .object({ form: identifier, signOut: identifier })
+    .optional(),
+  navigation: z.object({ export: identifier }).optional(),
   server: z
     .object({
       export: identifier,

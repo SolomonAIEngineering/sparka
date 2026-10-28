@@ -15,7 +15,6 @@
     "src/**/*.ts",
     "src/**/*.tsx",
     "../../apps/chat/types/**/*.d.ts",
-    "../../apps/chat/electron.d.ts",
     "visual/**/*.ts",
     "visual/**/*.tsx",
     "test/**/*.test.ts"
