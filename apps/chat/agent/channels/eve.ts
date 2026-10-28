@@ -1,4 +1,4 @@
-import { authenticateDisposableGuest } from "../../lib/eve/disposable-guest-auth";
+import { installedSessionProfiles } from "../../composition/generated/installed-session-profiles";
 import { eveChannel } from "eve/channels/eve";
 import { requireWorkspaceSeedPaths } from "../../lib/eve/copy-seed";
 
@@ -7,7 +7,10 @@ import { resolveEveCurrentCopySeed } from "../../lib/db/eve-current-copy";
 import { authenticateEveGateway } from "../../lib/eve/gateway-auth";
 
 export default eveChannel({
-  auth: [authenticateEveGateway, authenticateDisposableGuest],
+  auth: [
+    authenticateEveGateway,
+    ...installedSessionProfiles.map((profile) => profile.authenticate),
+  ],
   fetchFile: fetchEveChannelFile,
   resolveSeed: async ({ auth, operationId }) => {
     const seed = await resolveEveCurrentCopySeed(auth.principalId, operationId);

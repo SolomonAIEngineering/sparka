@@ -39,7 +39,7 @@ vi.mock("./conversation-scope", () => ({
 }));
 
 vi.mock("./turn-tools", () => ({
-  eveToolAllowed: (): boolean => mocks.settings.allowed,
+  eveTurnAccount: { get: (): boolean => mocks.settings.allowed },
 }));
 
 const input = {

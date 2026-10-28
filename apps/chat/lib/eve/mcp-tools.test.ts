@@ -68,7 +68,7 @@ const context = {
       getToken: () => {
         throw new Error("Unexpected receipt credential access");
       },
-      authenticator: "test",
+      authenticator: "chatjs-gateway",
       principalId: "owner",
       principalType: "user",
     },
@@ -79,7 +79,7 @@ const context = {
       current: null,
       initiator: {
         attributes: {},
-        authenticator: "test",
+        authenticator: "chatjs-gateway",
         principalId: "owner",
         principalType: "user",
       },
@@ -462,7 +462,7 @@ it("registers native per-call approval restricted to the session owner", async (
 });
 
 vi.mock("./turn-tools", () => ({
-  eveTurnGuest: { get: (): boolean => false },
+  eveTurnAccount: { get: (): boolean => true },
   eveTurnTool: { get: () => null },
 }));
 

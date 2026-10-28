@@ -19,6 +19,18 @@ const researchTestFiles = [
 // Runtime regressions, historical migration tools and sample evaluations stay
 // in the reference repository rather than becoming downstream app source.
 const REPOSITORY_ONLY_FILES = new Set([
+  "lib/db/retire-legacy-guests.test.ts",
+  "lib/eve/guest-ip.test.ts",
+  "app/api/eve-guest/route.test.ts",
+  "app/api/cron/cleanup/route.test.ts",
+  "lib/cleanup/job.test.ts",
+  "lib/eve/guest-model.test.ts",
+  "lib/eve/cleanup-guest-runtime.test.ts",
+  "lib/eve/disposable-guest.test.ts",
+  "lib/eve/session-policy.test.ts",
+  "lib/eve/local-guest-cleanup-scheduler.test.ts",
+  "lib/db/guest-runtime.test.ts",
+
   "scripts/installed-environment-validation.test.ts",
   "lib/db/encrypted-text.test.ts",
   "lib/electron-auth.test.ts",

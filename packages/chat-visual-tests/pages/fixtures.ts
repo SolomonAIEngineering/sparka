@@ -227,7 +227,6 @@ export const invoicesConversation: NonNullable<ServerData["conversation"]> = {
   forkKind: null,
   forkMessageId: null,
   forkTurnId: null,
-  guestCleanupAttemptedAt: null,
   id: invoicesChatId,
   initialContentHash: null,
   initialModelId: "google/gemini-2.5-flash-lite",

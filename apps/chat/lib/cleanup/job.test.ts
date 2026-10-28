@@ -3,26 +3,17 @@ import { runCleanupJob } from "./job";
 
 const tasks = vi.hoisted(() => ({
   attachments: vi.fn(),
-  guests: vi.fn(),
   runtime: vi.fn(),
 }));
 vi.mock("@/lib/eve/cleanup-orphaned-files", () => ({
   cleanupEveOrphanedFiles: tasks.attachments,
 }));
-vi.mock("@/lib/eve/cleanup-expired-guests", () => ({
-  cleanupExpiredEveGuests: tasks.guests,
-}));
-vi.mock("@/lib/eve/cleanup-guest-runtime", () => ({
-  cleanupGuestRuntimeSessions: tasks.runtime,
+vi.mock("@/composition/generated/installed-cleanup", () => ({
+  installedCleanupTasks: [{ id: "example", run: tasks.runtime }],
 }));
 beforeEach(() => {
   vi.resetAllMocks();
   tasks.attachments.mockResolvedValue({ deletedCount: 2, skipped: false });
-  tasks.guests.mockResolvedValue({
-    deletedCount: 1,
-    pendingCount: 0,
-    skipped: false,
-  });
   tasks.runtime.mockResolvedValue({
     deletedCount: 3,
     pendingCount: 0,
@@ -30,7 +21,7 @@ beforeEach(() => {
   });
 });
 
-test.each(["attachments", "guests", "runtime"] as const)(
+test.each(["attachments", "runtime"] as const)(
   "a failed %s task does not prevent other cleanup or expose its error",
   async (failedTask) => {
     tasks[failedTask].mockRejectedValue(
@@ -39,7 +30,6 @@ test.each(["attachments", "guests", "runtime"] as const)(
     const result = await runCleanupJob();
     expect(result.success).toBe(false);
     expect(tasks.attachments).toHaveBeenCalledOnce();
-    expect(tasks.guests).toHaveBeenCalledOnce();
     expect(tasks.runtime).toHaveBeenCalledOnce();
     expect(JSON.stringify(result)).not.toContain("private provider credential");
   }
@@ -50,8 +40,7 @@ test("reports counts when every task completes", async () => {
   expect(result.success).toBe(true);
   expect(result.results).toEqual({
     orphanedAttachments: { deletedCount: 2, skipped: false },
-    expiredGuests: { deletedCount: 1, pendingCount: 0, skipped: false },
-    runtimeGuests: { deletedCount: 3, pendingCount: 0, skipped: false },
+    example: { deletedCount: 3, pendingCount: 0, skipped: false },
   });
 });
 
@@ -64,17 +53,23 @@ test.each([
   expect(result.success).toBe(false);
 });
 
-test.each([
-  { pendingCount: 1, skipped: false },
-  { pendingCount: 0, skipped: true, reason: "unsupported_runtime" },
-])("incomplete legacy guest cleanup remains retryable: %o", async (state) => {
-  tasks.guests.mockResolvedValue({ deletedCount: 0, ...state });
+test("skipped attachment cleanup remains retryable", async () => {
+  tasks.attachments.mockResolvedValue({ deletedCount: 0, skipped: true });
   const result = await runCleanupJob();
   expect(result.success).toBe(false);
 });
 
-test("skipped attachment cleanup remains retryable", async () => {
-  tasks.attachments.mockResolvedValue({ deletedCount: 0, skipped: true });
+test.each([
+  { deletedCount: -1 },
+  { deletedCount: Number.NaN },
+  { pendingCount: -1 },
+])("invalid task inventory cannot report success: %o", async (value) => {
+  tasks.runtime.mockResolvedValue({
+    deletedCount: 0,
+    pendingCount: 0,
+    skipped: false,
+    ...value,
+  });
   const result = await runCleanupJob();
   expect(result.success).toBe(false);
 });

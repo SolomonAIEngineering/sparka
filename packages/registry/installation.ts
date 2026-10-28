@@ -27,6 +27,7 @@ const demoInstallation = installationSelectionSchema.parse({
     "followup-suggestions",
     "search",
     "credits",
+    "guest-chat",
     "model-preferences",
     "ai-titles",
     "sharing",

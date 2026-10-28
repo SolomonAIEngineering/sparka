@@ -27,8 +27,6 @@ import {
   eveChat,
   eveConversation,
   eveDispatch,
-  eveGuest,
-  eveGuestMessage,
   eveResponseGroup,
 } from "@/lib/db/schema";
 import { CreationConflictError } from "./creation-conflict-error";
@@ -466,63 +464,6 @@ const assertResponseGroupCandidateAvailable = async (
   }
 };
 
-const assertGuestCreationAdmission = async (
-  tx: Readonly<Pick<CreationTransaction, "select">>,
-  ownerId: string,
-  operationId: string,
-  reservationId?: string
-): Promise<void> => {
-  if (typeof reservationId !== "string" || reservationId === "") {
-    const [guest] = await tx
-      .select({ ownerId: eveGuest.ownerId })
-      .from(eveGuest)
-      .where(eq(eveGuest.ownerId, ownerId));
-    if (hasQueryRow(guest)) {
-      throw new CreationConflictError(
-        "Guest creation requires a quota reservation."
-      );
-    }
-    return;
-  }
-  if (typeof reservationId === "string" && reservationId !== "") {
-    const [quota] = await tx
-      .select({
-        id: eveGuestMessage.reservationId,
-        state: eveGuestMessage.state,
-      })
-      .from(eveGuestMessage)
-      .where(
-        and(
-          eq(eveGuestMessage.ownerId, ownerId),
-          eq(eveGuestMessage.operationId, operationId),
-          eq(eveGuestMessage.reservationId, reservationId),
-          inArray(eveGuestMessage.state, ["reserved", "committed"])
-        )
-      );
-    if (!hasQueryRow(quota)) {
-      throw new CreationConflictError(
-        "Guest admission has changed. Retry the saved request."
-      );
-    }
-    if (quota.state === "committed") {
-      const [creation] = await tx
-        .select({ id: eveConversation.id })
-        .from(eveConversation)
-        .where(
-          and(
-            eq(eveConversation.ownerId, ownerId),
-            eq(eveConversation.operationId, operationId)
-          )
-        );
-      if (!hasQueryRow(creation)) {
-        throw new CreationConflictError(
-          "Committed guest admission has no creation journal."
-        );
-      }
-    }
-  }
-};
-
 const resolveCreationChat = async (
   tx: CreationTransactionView,
   value: ReadonlyNativeSurface<
@@ -570,19 +511,12 @@ const reserveEveConversation = async (
     Omit<typeof eveConversation.$inferInsert, "chatId" | "workspaceId">
   >,
   initialTitle: string,
-  fork?: EveForkInput,
-  guestReservationId?: string
+  fork?: EveForkInput
 ): Promise<ConversationRow[]> =>
   await db.transaction(async (tx: CreationTransactionView) => {
     // Shared with deletion: a new fork cannot appear behind its family fence.
     await tx.execute(
       sql`select pg_advisory_xact_lock(hashtextextended(${`eve-family:${value.ownerId}`}, 0))`
-    );
-    await assertGuestCreationAdmission(
-      tx,
-      value.ownerId,
-      value.operationId,
-      guestReservationId
     );
     await assertResponseGroupCandidateAvailable(
       tx,
@@ -904,7 +838,6 @@ const assertMatchingMessageCreation = (
  * @param {EveForkInput} [fork] Current completed source conversation to copy.
  * @param {typeof eveConversation.$inferInsert.forkKind} [forkKind] Fork type for the new conversation.
  * @param {string[]} [fileKeys] File keys attached to the initial message.
- * @param {string} [guestReservationId] Existing guest reservation to consume.
  * @returns {Promise<BoundConversation>} The bound conversation after native session creation succeeds.
  */
 const createEveConversation = async (
@@ -920,7 +853,6 @@ const createEveConversation = async (
     fork,
     forkKind,
     fileKeys = [],
-    guestReservationId,
     seedOnly = false,
   }: ReadonlyNativeSurface<{
     initialRequest?: unknown;
@@ -930,7 +862,6 @@ const createEveConversation = async (
     fork?: EveForkInput;
     forkKind?: typeof eveConversation.$inferInsert.forkKind;
     fileKeys?: string[];
-    guestReservationId?: string;
     seedOnly?: boolean;
   }> = {}
 ): Promise<BoundConversation> => {
@@ -951,8 +882,7 @@ const createEveConversation = async (
       ownerId,
     },
     initialTitle,
-    fork,
-    guestReservationId
+    fork
   );
   if (!hasQueryRow(reservation)) {
     const [existing] = await db

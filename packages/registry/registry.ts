@@ -1,3 +1,4 @@
+import { guestChatItem } from "./src/plugins/guest-chat/manifest";
 import { desktopItem } from "./src/plugins/desktop/manifest";
 import { creditsItem } from "./src/plugins/credits/manifest";
 import { modelPreferencesItem } from "./src/plugins/model-preferences/manifest";
@@ -219,6 +220,7 @@ const registry = registrySchema.parse({
     searchItem,
     desktopItem,
     creditsItem,
+    guestChatItem,
     modelPreferencesItem,
     aiTitlesItem,
     sharingItem,

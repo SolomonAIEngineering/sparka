@@ -252,12 +252,14 @@ const EveConversationEditor = ({
         }
         readOnly={Boolean(fork.pending)}
         draft={fork.draft}
-        files={fork.files}
+        capabilities={{
+          files: fork.files,
+          selectedTool: fork.selectedTool,
+          onToolChange: handleEditToolChange,
+        }}
         modelSelection={fork.modelSelection}
         onDraftChange={handleEditDraft}
         onSubmit={onSubmit}
-        onToolChange={handleEditToolChange}
-        selectedTool={fork.selectedTool}
       />
       {fork.error && (
         <p className="text-destructive text-sm" role="alert">
@@ -443,20 +445,22 @@ const EveConversationComposer = ({
           fork.locked
         }
         draft={composerDraft.text}
-        files={files}
+        capabilities={{
+          files,
+          onToolChange: handleSelectedToolChange,
+          selectedTool: retainedToolSelection(
+            comparison,
+            pendingMessage,
+            composerDraft.selectedTool
+          ),
+        }}
         modelSelection={modelSelection}
         onDraftChange={handleDraftChange}
         onStop={onStop}
         onSubmit={onSubmit}
-        onToolChange={handleSelectedToolChange}
         readOnly={Boolean(comparison)}
         retainedModelId={pendingMessage?.modelId}
         retainedModelIds={comparison?.modelIds}
-        selectedTool={retainedToolSelection(
-          comparison,
-          pendingMessage,
-          composerDraft.selectedTool
-        )}
         stopDisabled={cancelPending || status === "resuming"}
       />
       {hasText(displayedError) &&

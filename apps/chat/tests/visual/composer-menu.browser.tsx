@@ -217,9 +217,11 @@ const mount = async (
         <>
           <Toaster />
           <EveComposer
-            files={files}
-            selectedTool={selectedTool}
-            onToolChange={setSelectedTool}
+            capabilities={{
+              files,
+              selectedTool,
+              onToolChange: setSelectedTool,
+            }}
             disabled={disabled}
             draft="Hello"
             onDraftChange={vi.fn<(_draft: string) => void>()}

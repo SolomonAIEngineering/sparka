@@ -22,7 +22,11 @@ import { mcpFiles, mcpItem } from "../../../registry/src/plugins/mcp/manifest";
 import { installPlan } from "./install-plan";
 import { planInstallation } from "./installation-plan";
 
-import { initializePluginUi, syncPlugins } from "./sync-plugins";
+import {
+  initializePluginUi,
+  pluginRegistrationTargets,
+  syncPlugins,
+} from "./sync-plugins";
 
 const roots: string[] = [];
 const demo = path.resolve(import.meta.dir, "../../../../apps/chat");
@@ -942,6 +946,106 @@ test("two billing contributors fail before any registration is written", async (
   await rejects(syncPlugins(root), /Only one plugin may supply usage billing/u);
   expect(await readFile(file, "utf-8")).toBe(before);
 });
+
+test("signed-out, session policy and cleanup contributions disappear when absent", async () => {
+  const root = await fixture();
+  await initializePluginUi(root);
+  const names = ["signed-out", "session-profiles", "cleanup"];
+  for (const name of names) {
+    // oxlint-disable-next-line no-await-in-loop -- Inspect each independently generated boundary.
+    const content = await readFile(
+      path.join(root, `composition/generated/installed-${name}.ts`),
+      "utf-8"
+    );
+    expect(content).not.toContain("@/plugins/");
+  }
+});
+
+const runtimeContributions = [
+  {
+    entry: "signed-out.tsx",
+    contribution: { signedOut: { export: "Screen" } },
+    conflict: "Only one plugin may supply the signed-out screen.",
+  },
+  {
+    entry: "session-profile.ts",
+    contribution: {
+      sessionProfile: { export: "profile", authenticator: "same-profile" },
+    },
+    conflict: "Duplicate or reserved plugin identity: same-profile",
+  },
+  {
+    entry: "cleanup.ts",
+    contribution: { cleanup: { export: "cleanup", id: "same-task" } },
+    conflict: "Duplicate or reserved plugin identity: same-task",
+  },
+];
+
+test.each(runtimeContributions)(
+  "rejects ambiguous $entry contributions before writing registrations",
+  async ({ entry, contribution, conflict }) => {
+    const root = await fixture();
+    await initializePluginUi(root);
+    await Promise.all(
+      ["first", "second"].map(async (id) => {
+        const directory = path.join(root, "plugins", id);
+        await mkdir(directory, { recursive: true });
+        await writeFile(path.join(directory, entry), "export {};\n");
+        await writeFile(
+          path.join(directory, "chatjs.json"),
+          JSON.stringify({
+            contractVersion: 2,
+            uiBase: "base",
+            id,
+            kind: "plugin",
+            ...contribution,
+          })
+        );
+      })
+    );
+    await rejects(syncPlugins(root), { message: conflict });
+    expect(
+      await readFile(
+        path.join(root, "composition/generated/installed-session-profiles.ts"),
+        "utf-8"
+      )
+    ).not.toContain("@/plugins/");
+  }
+);
+
+test.each(runtimeContributions)(
+  "missing implied $entry fails before changing registrations",
+  async ({ entry, contribution }) => {
+    const root = await fixture();
+    await initializePluginUi(root);
+    const readRegistrations = async () =>
+      await Promise.all(
+        pluginRegistrationTargets.map(
+          async (file) => await readFile(path.join(root, file), "utf-8")
+        )
+      );
+    const before = await readRegistrations();
+    const directory = path.join(root, "plugins/fixture");
+    await mkdir(directory, { recursive: true });
+    await writeFile(
+      path.join(directory, "chatjs.json"),
+      JSON.stringify({
+        contractVersion: 2,
+        uiBase: "base",
+        kind: "plugin",
+        id: "fixture",
+        ...contribution,
+      })
+    );
+    await rejects(syncPlugins(root), {
+      message: `fixture installation is incomplete. Missing: plugins/fixture/${entry}. Run chat-js add fixture.`,
+    });
+    expect(await readRegistrations()).toEqual(before);
+    await writeFile(path.join(directory, entry), "export {};\n");
+    await syncPlugins(root);
+    expect(await readRegistrations()).not.toEqual(before);
+  }
+);
 
 test.each([
   {

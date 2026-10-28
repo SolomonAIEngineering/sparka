@@ -1,7 +1,6 @@
 import type * as DispatchModule from "@/lib/db/eve-dispatch";
 import { beforeEach, expect, it, vi } from "vitest";
 import { z } from "zod";
-import type { readEveGuestOwner } from "../db/eve-guests";
 import type { eveRequest } from "./server";
 import type { createEveConversation } from "../db/eve-queries";
 
@@ -15,7 +14,6 @@ const mocks = vi.hoisted(() => ({
   canSpend: vi.fn(),
   prepareMessage: vi.fn<() => Promise<string>>(),
   creation: vi.fn(),
-  guest: vi.fn<typeof readEveGuestOwner>(),
   send: vi.fn<typeof DispatchModule.dispatchEveOnce>(),
   reconcile: vi.fn(),
   request: vi.fn<typeof eveRequest>(),
@@ -43,9 +41,6 @@ vi.mock("@/lib/db/eve-queries", () => ({
   createEveConversation: mocks.reserve,
   getEveConversation: mocks.source,
   getEveCreation: mocks.creation,
-}));
-vi.mock("@/lib/db/eve-guests", () => ({
-  readEveGuestOwner: mocks.guest,
 }));
 vi.mock("@/composition/generated/installed-billing", () => ({
   canSpend: mocks.canSpend,
@@ -75,7 +70,6 @@ beforeEach(() => {
   vi.resetAllMocks();
   mocks.canSpend.mockResolvedValue(true);
   mocks.prepareMessage.mockResolvedValue("prepared comparison");
-  mocks.guest.mockResolvedValue(null);
   mocks.source.mockResolvedValue({ sessionId: "source", state: "bound" });
   mocks.reserve.mockImplementation(
     async (_owner, operationId, _title, dispatch) => ({

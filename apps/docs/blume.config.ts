@@ -147,6 +147,7 @@ export default defineConfig({
             "/plugins/model-preferences",
             "/plugins/ai-titles",
             "/plugins/credits",
+            "/plugins/guest-chat",
             "/plugins/desktop",
             "/plugins/sharing",
             "/plugins/followup-suggestions",

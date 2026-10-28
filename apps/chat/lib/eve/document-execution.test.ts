@@ -27,7 +27,9 @@ vi.mock("../../composition/generated/code-executor", () => ({
   codeExecutor: mocks.execute,
 }));
 
-vi.mock("./turn-tools", () => ({ eveToolAllowed: (): boolean => true }));
+vi.mock("./turn-tools", () => ({
+  eveTurnAccount: { get: (): boolean => true },
+}));
 
 const input = {
   documentId: "60dbe86a-b2c4-4d32-ae09-a00e90b84e99",

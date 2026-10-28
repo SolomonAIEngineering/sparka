@@ -57,6 +57,11 @@ const readInstalledPlugins = async (
             ...(definition.server ? [`plugins/${id}/server-plugin.ts`] : []),
             ...(definition.chat ? [`plugins/${id}/chat.ts`] : []),
             ...(definition.billing ? [`plugins/${id}/billing.ts`] : []),
+            ...(definition.signedOut ? [`plugins/${id}/signed-out.tsx`] : []),
+            ...(definition.sessionProfile
+              ? [`plugins/${id}/session-profile.ts`]
+              : []),
+            ...(definition.cleanup ? [`plugins/${id}/cleanup.ts`] : []),
             ...(definition.client ? [`plugins/${id}/client-plugin.ts`] : []),
             ...(definition.environmentValidation === undefined
               ? []

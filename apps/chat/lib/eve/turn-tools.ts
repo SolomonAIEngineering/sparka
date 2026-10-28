@@ -1,7 +1,6 @@
 import { defineState } from "eve/context";
 
 import type { UiToolName } from "@/lib/ai/types";
-import { ANONYMOUS_LIMITS } from "@/lib/types/anonymous";
 import {
   installedDocumentKinds,
   installedToolNames,
@@ -16,11 +15,7 @@ const eveTurnTool = defineState<UiToolName | null>(
   () => null
 );
 
-const eveTurnGuest = defineState<boolean>("chatjs.turn-guest", () => false);
-
-const eveToolAllowed = (name: string): boolean =>
-  !eveTurnGuest.get() ||
-  ANONYMOUS_LIMITS.AVAILABLE_TOOLS.some((tool) => tool === name);
+const eveTurnAccount = defineState<boolean>("chatjs.turn-account", () => false);
 
 const eveInstalledToolEnabled = (name: string): boolean => {
   const operation = Object.entries(eveDocumentOperations).find(
@@ -49,7 +44,7 @@ const filterEveTools = <T extends object>(tools: T): Partial<T> => {
     if (
       typeof name === "string" &&
       (!eveInstalledToolEnabled(name) ||
-        !eveToolAllowed(name) ||
+        !eveTurnAccount.get() ||
         (selected && !selected.includes(name)))
     ) {
       continue;
@@ -62,10 +57,4 @@ const filterEveTools = <T extends object>(tools: T): Partial<T> => {
   }
   return available;
 };
-export {
-  eveInstalledToolEnabled,
-  eveToolAllowed,
-  eveTurnGuest,
-  eveTurnTool,
-  filterEveTools,
-};
+export { eveInstalledToolEnabled, eveTurnAccount, eveTurnTool, filterEveTools };
