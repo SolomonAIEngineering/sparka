@@ -1,28 +1,75 @@
 "use client";
 
-import type { ChatMessage } from "@/lib/ai/types";
-import { useMessageResearchUpdatePartByToolCallId } from "@/lib/stores/hooks-message-parts";
-import { ResearchUpdates } from "./message-annotations";
+import { hasText } from "@/components/text-value";
 
-export function WebSearch({
-  messageId,
+import React from "react";
+import type { JSX as ReactJSX } from "react";
+import { z } from "zod";
+
+import { Sources } from "@/components/sources";
+
+/**
+ * The selected registry renderer validates its full tool schema. This shared
+ * view only depends on the output fields it renders, so it remains available
+ * when a scaffold has no web-search tool installed.
+ */
+const webSearchOutput = z.object({
+  error: z.string().optional(),
+  searches: z.array(
+    z.object({
+      results: z.array(
+        z.object({ content: z.string(), title: z.string(), url: z.string() })
+      ),
+    })
+  ),
+});
+
+export const WebSearch = ({
   part,
 }: {
-  messageId: string;
-  part: Extract<ChatMessage["parts"][number], { type: "tool-webSearch" }>;
-}) {
-  const { toolCallId, state } = part;
-  const researchUpdates = useMessageResearchUpdatePartByToolCallId(
-    messageId,
-    toolCallId
-  );
-
-  if (state === "input-available" || state === "output-available") {
-    return (
-      <div className="flex flex-col gap-3" key={toolCallId}>
-        <ResearchUpdates updates={researchUpdates.map((u) => u.data)} />
-      </div>
-    );
+  readonly messageId: string;
+  readonly part: { readonly state: string; readonly output?: unknown };
+}): ReactJSX.Element => {
+  if (part.state === "output-error") {
+    return <p role="alert">Search failed.</p>;
   }
-  return null;
-}
+  if (part.state !== "output-available") {
+    return <output>Searching…</output>;
+  }
+  const result = webSearchOutput.safeParse(part.output);
+  if (!result.success) {
+    return <p role="alert">This search result could not be displayed.</p>;
+  }
+  const sources = result.data.searches.flatMap(
+    (
+      search: Readonly<{
+        results: readonly Readonly<{
+          content: string;
+          title: string;
+          url: string;
+        }>[];
+      }>
+    ) => search.results.map((source) => ({ ...source, source: "web" as const }))
+  );
+  const uniqueSources = [
+    ...new Map(
+      sources.map(
+        (
+          source: Readonly<{
+            source: "web";
+            content: string;
+            title: string;
+            url: string;
+          }>
+        ) => [source.url, source]
+      )
+    ).values(),
+  ];
+  return (
+    <div className="space-y-3">
+      {}
+      {hasText(result.data.error) && <p role="alert">{result.data.error}</p>}
+      {uniqueSources.length > 0 && <Sources sources={uniqueSources} />}
+    </div>
+  );
+};

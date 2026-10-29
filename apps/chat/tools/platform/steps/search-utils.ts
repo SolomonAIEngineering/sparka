@@ -1,8 +1,13 @@
-const URL_PATTERN = /^https?:\/\/([^/?#]+)(?:[/?#]|$)/i;
+const URL_PATTERN = /^https?:\/\/(?<domain>[^/?#]+)(?:[/?#]|$)/iu;
 
-export const deduplicateByDomainAndUrl = <T extends { url: string }>(
-  items: T[]
-): T[] => {
+const extractDomain = (url: string): string =>
+  URL_PATTERN.exec(url)?.groups?.domain ?? url;
+
+export const deduplicateByDomainAndUrl = <
+  Item extends { readonly url: string },
+>(
+  items: readonly Item[]
+): Item[] => {
   const seenDomains = new Set<string>();
   const seenUrls = new Set<string>();
 
@@ -19,5 +24,3 @@ export const deduplicateByDomainAndUrl = <T extends { url: string }>(
     return false;
   });
 };
-const extractDomain = (url: string): string =>
-  url.match(URL_PATTERN)?.[1] || url;

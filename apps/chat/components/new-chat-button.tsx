@@ -1,34 +1,41 @@
 "use client";
 
+import { SidebarLink } from "@/components/navigation-links";
+import { useSyncExternalStore } from "react";
+
+import { useSidebar } from "@/components/ui/sidebar";
+
 import { Plus } from "lucide-react";
-import { useEffect, useState } from "react";
-import { InternalLink } from "@/components/internal-link";
+import type { JSX as ReactJSX } from "react";
+
 import { getNewChatShortcutText } from "@/components/keyboard-shortcuts";
-import { SidebarMenuButton, useSidebar } from "@/components/ui/sidebar";
 
-export function NewChatButton() {
+export const NewChatButton = (): ReactJSX.Element => {
   const { setOpenMobile } = useSidebar();
-  const [shortcutText, setShortcutText] = useState("Ctrl+Shift+O");
-
-  useEffect(() => {
-    setShortcutText(getNewChatShortcutText());
-  }, []);
+  const shortcutText = useSyncExternalStore(
+    () => (): void => {
+      // This capability has no subscription to clean up.
+    },
+    getNewChatShortcutText,
+    () => "Ctrl+Shift+O"
+  );
 
   return (
-    <SidebarMenuButton asChild className="mt-4" tooltip="New Chat">
-      <InternalLink
-        className="flex w-full items-center gap-2"
-        href="/"
-        onNavigate={() => {
-          setOpenMobile(false);
-        }}
-      >
-        <Plus aria-label="New Chat" size={16} />
-        <span>New Chat</span>
-        <span className="ml-auto text-muted-foreground text-xs">
-          {shortcutText}
-        </span>
-      </InternalLink>
-    </SidebarMenuButton>
+    <SidebarLink
+      className="mt-4"
+      tooltip="New Chat"
+      linkClassName="flex w-full items-center gap-2"
+      href="/"
+      onNavigate={() => {
+        setOpenMobile(false);
+        globalThis.dispatchEvent(new Event("chatjs:new-chat"));
+      }}
+    >
+      <Plus aria-label="New Chat" size={16} />
+      <span>New Chat</span>
+      <span className="text-muted-foreground ml-auto text-xs">
+        {shortcutText}
+      </span>
+    </SidebarLink>
   );
-}
+};

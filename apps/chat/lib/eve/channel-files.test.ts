@@ -1,0 +1,85 @@
+import { beforeEach, expect, it, vi } from "vitest";
+import type { assertEveFilesOwned } from "../db/eve-files";
+import { fetchEveChannelFile } from "./channel-files";
+
+const mocks = vi.hoisted(() => ({
+  download: vi.fn(),
+  retain: vi.fn(),
+  owned: vi.fn<typeof assertEveFilesOwned>(),
+}));
+vi.mock("../db/eve-files", () => ({ assertEveFilesOwned: mocks.owned }));
+vi.mock("../file-storage", () => ({ downloadFile: mocks.download }));
+vi.mock("./workspace-attachments", () => ({
+  retainWorkspaceAttachment: mocks.retain,
+}));
+
+const key = "abcdefghijklmnopqrstuvwx.png";
+const owner = {
+  attributes: {},
+  authenticator: "test",
+  principalId: "destination-owner",
+  principalType: "user",
+} satisfies NonNullable<
+  NonNullable<Parameters<typeof fetchEveChannelFile>[1]>["session"]
+>["auth"]["current"];
+const context = {
+  session: { id: "native-session", auth: { current: owner, initiator: owner } },
+  state: {},
+};
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.owned.mockResolvedValue();
+  mocks.download.mockResolvedValue(
+    new Blob(["image bytes"], { type: "image/png" })
+  );
+});
+
+it("checks the destination owner before reading local storage, regardless of the supplied host", async () => {
+  const result = await fetchEveChannelFile(
+    `https://untrusted.example/api/files/${key}`,
+    context
+  );
+  expect(mocks.owned).toHaveBeenCalledWith(owner.principalId, [key]);
+  expect(mocks.download).toHaveBeenCalledWith(key);
+  expect(mocks.owned.mock.invocationCallOrder[0]).toBeLessThan(
+    mocks.download.mock.invocationCallOrder[0]
+  );
+  if (!result) {
+    throw new Error("Expected channel file");
+  }
+  expect(result.bytes.toString()).toBe("image bytes");
+  expect(result.mediaType).toBe("image/png");
+  expect(mocks.retain).toHaveBeenCalledWith({
+    ownerId: owner.principalId,
+    sessionId: "native-session",
+    fileKey: key,
+    content: Buffer.from("image bytes"),
+  });
+});
+
+it("never reads a foreign or deleted file after an ownership rejection", async () => {
+  mocks.owned.mockRejectedValue(new Error("Not owned"));
+  await expect(
+    fetchEveChannelFile(`/api/files/${key}`, context)
+  ).rejects.toThrow("Not owned");
+  expect(mocks.download).not.toHaveBeenCalled();
+});
+it("does not resolve files without authenticated session context", async () => {
+  await expect(fetchEveChannelFile(`/api/files/${key}`)).rejects.toThrow(
+    "authenticated owner"
+  );
+  expect(mocks.owned).not.toHaveBeenCalled();
+  expect(mocks.download).not.toHaveBeenCalled();
+});
+it.each([
+  "https://foreign.example/private",
+  "/api/files/../../private",
+  "https://foreign.example/?next=/api/files/abcdefghijklmnopqrstuvwx.png",
+])(
+  "leaves unrelated or malformed URL %s to the channel policy",
+  async (url) => {
+    expect(await fetchEveChannelFile(url, context)).toBeNull();
+    expect(mocks.owned).not.toHaveBeenCalled();
+    expect(mocks.download).not.toHaveBeenCalled();
+  }
+);

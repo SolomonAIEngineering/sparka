@@ -1,27 +1,24 @@
+import { Gateway } from "./gateway";
+import type { GatewayProvider } from "./gateways/registry";
+import type { ReadonlyNativeSurface } from "@/lib/readonly-native-surface";
 import { config } from "@/lib/config";
-import {
-  DEFAULT_GATEWAY,
-  type GatewayProvider,
-  type GatewayType,
-  gatewayRegistry,
-} from "./gateways/registry";
+import { createModuleLogger } from "@/lib/logger";
+import { gatewayEnv } from "@/lib/env";
+import { getFallbackModels } from "./gateways/fallback-models";
 
 let activeGateway: GatewayProvider | null = null;
 
-export function getActiveGateway(): GatewayProvider {
-  if (activeGateway) {
-    return activeGateway;
-  }
+export const getActiveGateway = (): GatewayProvider => {
+  activeGateway ??= new Gateway({
+    env: gatewayEnv,
+    fetch: async (
+      input: string | ReadonlyNativeSurface<URL | Request>,
 
-  const gatewayType: GatewayType = config.ai.gateway ?? DEFAULT_GATEWAY;
-
-  const factory = gatewayRegistry[gatewayType];
-  if (!factory) {
-    throw new Error(
-      `Unknown gateway type: ${gatewayType}. Supported: ${Object.keys(gatewayRegistry).join(", ")}`
-    );
-  }
-
-  activeGateway = factory();
+      init
+    ): Promise<Response> =>
+      await fetch(input, { ...init, next: { revalidate: 3600 } }),
+    getFallbackModels,
+    logger: createModuleLogger(`ai/gateways/${config.ai.gateway}`),
+  });
   return activeGateway;
-}
+};

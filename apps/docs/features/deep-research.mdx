@@ -9,19 +9,13 @@ Deep Research is an autonomous agent that conducts multi-step research on comple
 
 ## Quick Start
 
-Enable deep research in `chat.config.ts`:
+Install the capability in your app:
 
-```ts
-ai: {
-  tools: {
-    deepResearch: {
-      enabled: true,
-    },
-  },
-}
+```bash
+bunx @chat-js/cli@latest add deep-research
 ```
 
-Deep research uses the same search provider as [web search](/features/web-search). Configure one of the supported providers:
+Deep research uses the same search provider as [web search](/features/web-search). Install one provider and configure its matching key. Missing search defaults to Tavily. To use Firecrawl, run `bunx @chat-js/cli@latest add firecrawl-search --replace`:
 
 ```bash
 # Option 1: Tavily (recommended)
@@ -47,6 +41,7 @@ flowchart LR
 If enabled, the agent analyzes the user's request and asks clarifying questions when the scope is ambiguous. This ensures the research stays focused.
 
 When clarification is needed:
+
 - The agent responds with a question and pauses execution
 - You provide the requested information in your next message
 - If you explicitly selected the deep research tool, it remains selected after you respond
@@ -67,6 +62,7 @@ A supervisor agent orchestrates the research:
 5. Continues until research is complete or iteration limit is reached
 
 Each researcher agent:
+
 - Executes web searches on its assigned topic
 - Gathers relevant information from multiple sources
 - Compresses findings into concise notes
@@ -83,7 +79,6 @@ Configure deep research behavior in `chat.config.ts`:
 ai: {
   tools: {
     deepResearch: {
-      enabled: true,
       defaultModel: "google/gemini-2.5-flash-lite",
       finalReportModel: "google/gemini-3-flash",
       allowClarification: true,      // Ask clarifying questions
@@ -96,7 +91,7 @@ ai: {
 ```
 
 | Option | Default | Description |
-|--------|---------|-------------|
+| --- | --- | --- |
 | `allowClarification` | `true` | Whether to ask clarifying questions |
 | `maxResearcherIterations` | `1` | Max supervisor loop iterations |
 | `maxConcurrentResearchUnits` | `2` | Topics researched in parallel |
@@ -104,21 +99,21 @@ ai: {
 | `deepResearch` model | `gemini-2.5-flash-lite` | Model for research and supervision |
 | `deepResearchFinalReport` model | `gemini-3-flash` | Model for final report generation |
 
-<Note>
+<Callout type="note">
   Research uses multiple LLM calls. Consider cost implications when increasing
   iteration limits or using more expensive models.
-</Note>
+</Callout>
 
 ## UI States
 
 The research progress is shown in real-time:
 
-| State | Shows |
-|-------|-------|
-| `started` | Research has begun |
-| `writing` | Writing research brief or final report |
-| `thoughts` | Research topics being investigated |
-| `completed` | Research finished, report available |
+| State       | Shows                                  |
+| ----------- | -------------------------------------- |
+| `started`   | Research has begun                     |
+| `writing`   | Writing research brief or final report |
+| `thoughts`  | Research topics being investigated     |
+| `completed` | Research finished, report available    |
 
 Each research topic shows its own progress indicator as it's being investigated.
 

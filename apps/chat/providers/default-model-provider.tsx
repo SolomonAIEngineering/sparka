@@ -1,15 +1,15 @@
 "use client";
 
-import {
+import React, {
   createContext,
-  type ReactNode,
   useCallback,
   useContext,
   useMemo,
   useState,
 } from "react";
-import { toast } from "sonner";
 import type { AppModelId } from "@/lib/ai/app-models";
+import type { ReadonlyReactNode } from "@/lib/readonly-react-node";
+import { toast } from "sonner";
 
 interface DefaultModelContextType {
   changeModel: (modelId: AppModelId) => Promise<void>;
@@ -21,14 +21,14 @@ const DefaultModelContext = createContext<DefaultModelContextType | undefined>(
 );
 
 interface DefaultModelClientProviderProps {
-  children: ReactNode;
-  defaultModel: AppModelId;
+  readonly children: ReadonlyReactNode;
+  readonly defaultModel: AppModelId;
 }
 
-export function DefaultModelProvider({
+const DefaultModelProvider = ({
   children,
   defaultModel: initialModel,
-}: DefaultModelClientProviderProps) {
+}: DefaultModelClientProviderProps): React.JSX.Element => {
   const [currentModel, setCurrentModel] = useState<AppModelId>(initialModel);
 
   const changeModel = useCallback(
@@ -39,11 +39,11 @@ export function DefaultModelProvider({
       try {
         // Update cookies for persistence
         await fetch("/api/chat-model", {
-          method: "POST",
+          body: JSON.stringify({ model: modelId }),
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ model: modelId }),
+          method: "POST",
         });
       } catch (error) {
         console.error("Failed to save chat model:", error);
@@ -54,11 +54,10 @@ export function DefaultModelProvider({
     },
     [initialModel]
   );
-
   const value = useMemo(
     () => ({
-      defaultModel: currentModel,
       changeModel,
+      defaultModel: currentModel,
     }),
     [currentModel, changeModel]
   );
@@ -68,9 +67,9 @@ export function DefaultModelProvider({
       {children}
     </DefaultModelContext.Provider>
   );
-}
+};
 
-export function useDefaultModel() {
+const useDefaultModel = (): AppModelId => {
   const context = useContext(DefaultModelContext);
   if (context === undefined) {
     throw new Error(
@@ -78,9 +77,9 @@ export function useDefaultModel() {
     );
   }
   return context.defaultModel;
-}
+};
 
-export function useModelChange() {
+const useModelChange = (): DefaultModelContextType["changeModel"] => {
   const context = useContext(DefaultModelContext);
   if (context === undefined) {
     throw new Error(
@@ -88,4 +87,5 @@ export function useModelChange() {
     );
   }
   return context.changeModel;
-}
+};
+export { DefaultModelProvider, useDefaultModel, useModelChange };

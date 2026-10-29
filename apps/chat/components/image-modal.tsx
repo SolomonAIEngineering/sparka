@@ -1,8 +1,13 @@
 "use client";
 
-import { CopyIcon, DownloadIcon, XIcon } from "lucide-react";
+import { CopyIcon, DownloadIcon, ImageOffIcon, XIcon } from "lucide-react";
+import Image from "next/image";
+import React from "react";
+import type { JSX as ReactJSX } from "react";
 import { toast } from "sonner";
+
 import { Button } from "@/components/ui/button";
+
 import {
   Dialog,
   DialogClose,
@@ -10,22 +15,25 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
+
 import { cn } from "@/lib/utils";
 
+import { useImageLoadError } from "@/hooks/use-image-load-error";
+
 interface ImageModalProps {
-  imageName?: string;
-  imageUrl: string;
-  isOpen: boolean;
-  onClose: () => void;
-  showActions?: boolean;
+  readonly imageName?: string;
+  readonly imageUrl: string;
+  readonly isOpen: boolean;
+  readonly onClose: () => void;
+  readonly showActions?: boolean;
 }
 
-async function handleCopyImage(
-  e: React.MouseEvent,
+const handleCopyImage = async (
+  event: Readonly<Pick<React.MouseEvent, "stopPropagation">>,
   imageUrl: string | undefined
-) {
-  e.stopPropagation();
-  if (!imageUrl) {
+): Promise<void> => {
+  event.stopPropagation();
+  if (!(typeof imageUrl === "string" && imageUrl !== "")) {
     return;
   }
 
@@ -34,17 +42,17 @@ async function handleCopyImage(
     const blob = await response.blob();
     await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
     toast.success("Copied image to clipboard!");
-  } catch (_error) {
+  } catch {
     toast.error("Failed to copy image to clipboard");
   }
-}
+};
 
-async function handleDownload(
-  e: React.MouseEvent,
+const handleDownload = async (
+  event: Readonly<Pick<React.MouseEvent, "stopPropagation">>,
   imageUrl: string | undefined
-) {
-  e.stopPropagation();
-  if (!imageUrl) {
+): Promise<void> => {
+  event.stopPropagation();
+  if (!(typeof imageUrl === "string" && imageUrl !== "")) {
     return;
   }
 
@@ -52,62 +60,68 @@ async function handleDownload(
     const response = await fetch(imageUrl);
     const blob = await response.blob();
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `image-${Date.now()}.png`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    const downloadLink = document.createElement("a");
+    downloadLink.href = url;
+    downloadLink.download = `image-${Date.now()}.png`;
+    document.body.append(downloadLink);
+    downloadLink.click();
+    downloadLink.remove();
     URL.revokeObjectURL(url);
-  } catch (_error) {
+  } catch {
     toast.error("Failed to download image");
   }
-}
+};
 
-export function ImageActions({
+const ImageActions = ({
   className,
   imageUrl,
 }: {
-  className?: string;
-  imageUrl: string | undefined;
-}) {
-  return (
-    <div className={cn("flex items-center gap-1", className)}>
-      <Button
-        className="bg-black/50 text-white hover:bg-black/70 hover:text-white"
-        onClick={(e) => handleCopyImage(e, imageUrl)}
-        size="icon-sm"
-        title="Copy image"
-        variant="ghost"
-      >
-        <CopyIcon size={16} />
-        <span className="sr-only">Copy image</span>
-      </Button>
-      <Button
-        className="bg-black/50 text-white hover:bg-black/70 hover:text-white"
-        onClick={(e) => handleDownload(e, imageUrl)}
-        size="icon-sm"
-        title="Download image"
-        variant="ghost"
-      >
-        <DownloadIcon size={16} />
-        <span className="sr-only">Download image</span>
-      </Button>
-    </div>
-  );
-}
+  readonly className?: string;
+  readonly imageUrl: string | undefined;
+}): React.JSX.Element => (
+  <div className={cn("flex items-center gap-1", className)}>
+    <Button
+      className="bg-black/50 text-white hover:bg-black/70 hover:text-white"
 
-export function ImageModal({
+      onClick={(event: Readonly<Pick<React.MouseEvent, "stopPropagation">>) => {
+        void handleCopyImage(event, imageUrl);
+      }}
+      size="icon-sm"
+      title="Copy image"
+      variant="ghost"
+    >
+      <CopyIcon size={16} />
+      <span className="sr-only">Copy image</span>
+    </Button>
+    <Button
+      className="bg-black/50 text-white hover:bg-black/70 hover:text-white"
+
+      onClick={(event: Readonly<Pick<React.MouseEvent, "stopPropagation">>) => {
+        void handleDownload(event, imageUrl);
+      }}
+      size="icon-sm"
+      title="Download image"
+      variant="ghost"
+    >
+      <DownloadIcon size={16} />
+      <span className="sr-only">Download image</span>
+    </Button>
+  </div>
+);
+
+const ImageModal = ({
   isOpen,
   onClose,
   imageUrl,
   imageName,
   showActions = true,
-}: ImageModalProps) {
+}: ImageModalProps): ReactJSX.Element => {
+  const { handleImageError, imageUnavailable } = useImageLoadError(imageUrl);
+
   return (
     <Dialog onOpenChange={onClose} open={isOpen}>
       <DialogContent
-        className="h-screen w-screen max-w-none rounded-none border-none bg-background/50 p-0 backdrop-blur-sm sm:max-w-none"
+        className="bg-background/50 h-screen w-screen max-w-none rounded-none border-none p-0 backdrop-blur-sm sm:max-w-none"
         showCloseButton={false}
       >
         <DialogTitle className="sr-only">
@@ -122,21 +136,38 @@ export function ImageModal({
         </DialogClose>
         <button
           className="group flex h-full w-full cursor-pointer items-center justify-center"
-          onClick={() => onClose()}
+          onClick={(event: {
+            readonly target: object;
+            readonly currentTarget: object;
+          }) => {
+            if (event.target === event.currentTarget) {
+              onClose();
+            }
+          }}
           type="button"
         >
-          {/* biome-ignore lint/performance/noImgElement: Next/Image not desired for modal preview */}
-          {/* biome-ignore lint/correctness/useImageSize: Dynamic image dimensions unknown */}
-          {/* biome-ignore lint/a11y/useKeyWithClickEvents: Click handled by parent button */}
-          {/* biome-ignore lint/a11y/noNoninteractiveElementInteractions: Stops propagation to parent */}
-          <img
-            alt={imageName ?? "Expanded image"}
-            className="max-h-[90vh] max-w-[90vw] object-contain"
-            onClick={(e) => e.stopPropagation()}
-            src={imageUrl || undefined}
-          />
+          {imageUnavailable ? (
+            <output className="flex flex-col items-center gap-3 text-white">
+              <ImageOffIcon className="size-10" />
+              <span>Image unavailable</span>
+            </output>
+          ) : (
+            imageUrl !== "" && (
+              <Image
+                alt={imageName ?? "Expanded image"}
+                loading="eager"
+                unoptimized
+                className="h-auto max-h-[90vh] w-auto max-w-[90vw] object-contain"
+                // Auto CSS sizing keeps unknown attachment dimensions intrinsic; zero hints reserve no artificial aspect ratio.
+                height={0}
+                width={0}
+                onError={handleImageError}
+                src={imageUrl}
+              />
+            )
+          )}
         </button>
-        {showActions && (
+        {showActions && !imageUnavailable && (
           <ImageActions
             className="absolute top-4 right-4"
             imageUrl={imageUrl}
@@ -145,4 +176,5 @@ export function ImageModal({
       </DialogContent>
     </Dialog>
   );
-}
+};
+export { ImageActions, ImageModal };

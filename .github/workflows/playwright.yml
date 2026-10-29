@@ -10,13 +10,29 @@ concurrency:
 jobs:
   playwright:
     name: Playwright
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: chatjs_ci
+          POSTGRES_USER: chatjs
+          POSTGRES_PASSWORD: chatjs
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U chatjs -d chatjs_ci" --health-interval 5s --health-timeout 5s --health-retries 10
     env:
-      # These secrets are optional in CI: Playwright falls back to safe test
-      # defaults when they are unset so the anonymous e2e suite can still boot.
+      # CI owns an ephemeral database; never spend shared Neon transfer on tests.
+      CI_PLAYWRIGHT: "true"
       AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DATABASE_URL: postgres://chatjs:chatjs@127.0.0.1:5432/chatjs_ci
+      WORKFLOW_POSTGRES_URL: postgres://chatjs:chatjs@127.0.0.1:5432/chatjs_ci
+      EVE_GATEWAY_SECRET: playwright-isolated-eve-gateway-secret
+      # Public test-only AES-256 key for the isolated MCP fixture.
+      MCP_ENCRYPTION_KEY: "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
+      EVE_INTERNAL_ORIGIN: http://localhost:3000
       BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
     steps:
       - uses: actions/checkout@v4
@@ -24,7 +40,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
       - name: Check affected
         id: affected
         shell: bash
@@ -53,13 +69,20 @@ jobs:
       - uses: actions/cache@v4
         if: steps.affected.outputs.run == 'true'
         with:
-          path: |
-            ~/.bun
-            **/node_modules
+          path: ~/.bun/install/cache
           key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
           restore-keys: ${{ runner.os }}-bun-
       - if: steps.affected.outputs.run == 'true'
         run: bun install --frozen-lockfile
+      - name: Check Playwright task isolation
+        if: steps.affected.outputs.run == 'true'
+        run: bun test scripts/playwright-task-graph.test.ts
+      - name: Migrate isolated test database
+        if: steps.affected.outputs.run == 'true'
+        run: bun run --cwd apps/chat db:migrate
+      - name: Bootstrap isolated EVE workflow database
+        if: steps.affected.outputs.run == 'true'
+        run: bun run --cwd apps/chat eve:setup
       - uses: actions/cache@v4
         if: steps.affected.outputs.run == 'true'
         id: playwright-cache
@@ -68,15 +91,21 @@ jobs:
           key: ${{ runner.os }}-playwright-${{ hashFiles('**/bun.lock') }}
       - name: Install Playwright browsers
         if: steps.affected.outputs.run == 'true' && steps.playwright-cache.outputs.cache-hit != 'true'
-        run: bunx playwright install --with-deps chromium
+        run: apps/chat/node_modules/.bin/playwright install --with-deps chromium
       - if: steps.affected.outputs.run == 'true'
         env:
           TURBO_SCM_BASE: ${{ github.event.pull_request.base.sha }}
           TURBO_SCM_HEAD: ${{ github.event.pull_request.head.sha }}
         run: bunx turbo run test:e2e --affected
+      - name: Test conversation presentation
+        if: steps.affected.outputs.run == 'true'
+        working-directory: apps/chat
+        run: bunx playwright test --config playwright.eve-presentation.config.ts
       - uses: actions/upload-artifact@v4
         if: steps.affected.outputs.run == 'true' && always() && !cancelled()
         with:
           name: playwright-report
-          path: apps/chat/playwright-report/
+          path: |
+            apps/chat/playwright-report/
+            apps/chat/tests/eve-results/presentation/
           retention-days: 7

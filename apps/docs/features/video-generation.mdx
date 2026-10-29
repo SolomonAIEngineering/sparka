@@ -9,25 +9,25 @@ Generate videos directly in chat using AI models. Users describe what they want 
 
 ## Quick Start
 
-Toggle in `chat.config.ts`:
+Install the capability in your app:
 
-```ts
-features: {
-  videoGeneration: true, // Requires BLOB_READ_WRITE_TOKEN
-}
+```bash
+bunx @chat-js/cli@latest add generate-video --storage-provider vercel-blob
 ```
 
-<Note>
-  Video generation requires `BLOB_READ_WRITE_TOKEN` since generated videos are
-  uploaded to Vercel Blob storage.
-</Note>
+<Callout type="note">
+  Video generation requires a durable [file storage provider](../storage) for
+  generated videos.
+</Callout>
 
-Configure the default video model:
+The built-in video tool requires a video-capable gateway. Only the built-in Vercel gateway currently declares this capability. Configure its default model:
 
 ```ts
-models: {
-  defaults: {
-    video: "xai/grok-imagine-video",
+ai: {
+  tools: {
+    video: {
+      default: "xai/grok-imagine-video",
+    },
   },
 }
 ```
@@ -36,11 +36,11 @@ models: {
 
 The tool accepts the following inputs:
 
-| Parameter         | Type                          | Default | Description                        |
-| ----------------- | ----------------------------- | ------- | ---------------------------------- |
-| `prompt`          | string                        | —       | Descriptive text for the video     |
-| `aspectRatio`     | `"16:9"` \| `"9:16"` \| `"1:1"` | `"16:9"` | Output aspect ratio             |
-| `durationSeconds` | number (1–10)                 | `5`     | Length of the generated video      |
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `prompt` | string | Required | Descriptive text for the video |
+| `aspectRatio` | `"16:9"` \| `"9:16"` \| `"1:1"` | `"16:9"` | Output aspect ratio |
+| `durationSeconds` | number (1–10) | `5` | Length of the generated video |
 
 The LLM fills in these parameters automatically based on the user's request.
 
@@ -48,8 +48,8 @@ The LLM fills in these parameters automatically based on the user's request.
 
 Follows the [Tool Part](/cookbook/tool-part) pattern:
 
-```
-lib/ai/tools/generate-video.ts → components/part/generate-video.tsx
+```text
+tools/chatjs/generate-video/tool.ts → tools/chatjs/generate-video/renderer.tsx
 ```
 
 ### Tool Output
@@ -58,24 +58,26 @@ lib/ai/tools/generate-video.ts → components/part/generate-video.tsx
 return { videoUrl: result.url, prompt };
 ```
 
-The generated video is uploaded to blob storage and the URL returned. Supported container formats are mp4, webm, and mov, resolved from the response media type.
+The generated video is uploaded through the configured Files SDK provider and the ChatJS file URL is returned. Supported container formats are mp4, webm, and mov, resolved from the response media type.
 
 ### UI States
 
-| State             | Shows                                    |
-| ----------------- | ---------------------------------------- |
-| `input-available` | Pulsing placeholder + "Generating video: {prompt}" |
+| State | Shows |
+| --- | --- |
+| `input-available` | Pulsing placeholder + `Generating video: {prompt}` |
 | `output-available` | Inline video player with controls, autoplay, loop, and mute |
-| `failed`          | Error message with suggestion to try a different prompt |
+| `failed` | Error message with suggestion to try a different prompt |
 
 ## Configuration
 
 ### Video Model
 
 ```ts title="chat.config.ts"
-models: {
-  defaults: {
-    video: "xai/grok-imagine-video",
+ai: {
+  tools: {
+    video: {
+      default: "xai/grok-imagine-video",
+    },
   },
 }
 ```
@@ -85,8 +87,8 @@ models: {
 When the tool runs, it resolves the model to use:
 
 1. If the user's selected chat model supports video output (per the app model registry, `model.output.video`), use it.
-2. Otherwise, fall back to `config.models.defaults.video`.
+2. Otherwise, fall back to `config.ai.tools.video.default`.
 
 ### Google Model Handling
 
-For Google (Gemini) models, `aspectRatio` is passed in provider-specific options rather than as a top-level parameter.
+For Google (Gemini) models, `aspectRatio` is passed in provider-specific options as well as the top-level parameter.

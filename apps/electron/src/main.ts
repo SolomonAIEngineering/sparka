@@ -1,37 +1,57 @@
-import * as path from "node:path";
 import {
-  app,
+  APP_NAME,
+  APP_SCHEME,
+  APP_URL,
+  WINDOW_DEFAULTS,
+  ELECTRON_AUTH_COOKIE_PREFIX,
+} from "./config";
+import {
   BrowserWindow,
-  ipcMain,
   Menu,
-  type MenuItemConstructorOptions,
+  Tray,
+  app,
+  ipcMain,
   nativeImage,
   shell,
-  Tray,
 } from "electron";
-import { ELECTRON_AUTH_COOKIE_PREFIX } from "@/lib/electron-auth";
-import { APP_NAME, APP_SCHEME, APP_URL, WINDOW_DEFAULTS } from "./config";
+import { hasSessionCookie, isBetterAuthCookieName } from "./lib/auth-cookies";
+import type { MenuItemConstructorOptions } from "electron";
 import { electronAuthClient } from "./lib/auth-client";
+import { parseAuthRequestOptions } from "./auth-request-options";
+import path from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 
-function isSquirrelStartupEvent(): boolean {
+const AUTH_FLOW_ID_INCREMENT = 1;
+const AUTH_REFRESH_DELAY_MS = 250;
+const AUTH_SESSION_POLL_INTERVAL_MS = 250;
+const AUTH_SESSION_TIMEOUT_MS = 8000;
+const COOKIE_NAME_START_INDEX = 0;
+const COOKIE_SEPARATOR_LENGTH = 1;
+const DEV_ENTRY_ARG_INDEX = 1;
+const DEV_ENTRY_MIN_ARGS = 2;
+const EMPTY_WINDOW_COUNT = 0;
+
+const isSquirrelStartupEvent = (): boolean => {
   if (process.platform !== "win32") {
     return false;
   }
 
-  return process.argv.some((arg) => arg.startsWith("--squirrel-"));
-}
+  return process.argv.some((arg): boolean => arg.startsWith("--squirrel-"));
+};
 
 if (isSquirrelStartupEvent()) {
   app.quit();
 }
 
 // Disable GPU acceleration in WSL / headless environments to prevent D3D12 crashes.
-if (process.env.WSL_DISTRO_NAME || process.env.WSLENV) {
+const isWslOrHeadless =
+  (process.env.WSL_DISTRO_NAME ?? "") !== "" ||
+  (process.env.WSLENV ?? "") !== "";
+if (isWslOrHeadless) {
   app.disableHardwareAcceleration();
   app.commandLine.appendSwitch("disable-gpu");
   app.commandLine.appendSwitch("disable-software-rasterizer");
 }
-
 let isQuitting = false;
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -41,31 +61,55 @@ let isAuthFlowInProgress = false;
 let currentAuthFlowId = 0;
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 
+interface AuthOverlayWindow {
+  readonly isDestroyed: BrowserWindow["isDestroyed"];
+  readonly webContents: {
+    readonly executeJavaScript: Electron.WebContents["executeJavaScript"];
+    readonly isLoadingMainFrame: Electron.WebContents["isLoadingMainFrame"];
+    readonly once: Electron.WebContents["once"];
+  };
+}
+
+interface AuthSessionWindow {
+  readonly webContents: {
+    readonly session: {
+      readonly cookies: {
+        readonly get: Electron.Cookies["get"];
+        readonly remove: Electron.Cookies["remove"];
+        readonly set: Electron.Cookies["set"];
+      };
+    };
+  };
+}
+
 type AuthRendererState =
   | {
-      status: "idle";
-      message: null;
+      readonly status: "idle";
+      readonly message: null;
     }
   | {
-      status: "awaiting-browser" | "finishing" | "timed-out" | "error";
-      message: string;
-      detail?: string | null;
+      readonly status: "awaiting-browser" | "finishing" | "timed-out" | "error";
+      readonly message: string;
+      readonly detail?: string | null;
     };
 
 let currentAuthState: AuthRendererState = {
-  status: "idle",
   message: null,
+  status: "idle",
 };
 
 if (!gotSingleInstanceLock) {
   app.quit();
 }
 
-function registerProtocolClient(): void {
+const registerProtocolClient = (): void => {
   if (process.defaultApp) {
-    if (process.platform === "win32" && process.argv.length >= 2) {
+    if (
+      process.platform === "win32" &&
+      process.argv.length >= DEV_ENTRY_MIN_ARGS
+    ) {
       app.setAsDefaultProtocolClient(APP_SCHEME, process.execPath, [
-        path.resolve(process.argv[1]),
+        path.resolve(process.argv[DEV_ENTRY_ARG_INDEX]),
       ]);
       return;
     }
@@ -77,69 +121,34 @@ function registerProtocolClient(): void {
   }
 
   app.setAsDefaultProtocolClient(APP_SCHEME);
-}
+};
 
-function broadcastAuthState(): void {
+const getAuthErrorDetail = (error: unknown): string => {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
+};
+
+const broadcastAuthState = (): void => {
   if (!mainWindow || mainWindow.isDestroyed()) {
     return;
   }
 
   mainWindow.webContents.send("chatjs:auth-state-changed", currentAuthState);
-}
+};
 
-async function resetAuthFlow(): Promise<void> {
-  if (pendingAuthRefreshTimer) {
-    clearTimeout(pendingAuthRefreshTimer);
-    pendingAuthRefreshTimer = null;
-  }
-
-  isAuthFlowInProgress = false;
-  currentAuthFlowId += 1;
-
-  await setAuthState({
-    status: "idle",
-    message: null,
-  });
-}
-
-async function setAuthState(nextState: AuthRendererState): Promise<void> {
-  currentAuthState = nextState;
-  broadcastAuthState();
-
-  if (nextState.status === "idle") {
-    await setAuthOverlay(mainWindow, { visible: false });
-    return;
-  }
-
-  if (!mainWindow || mainWindow.isDestroyed()) {
-    return;
-  }
-
-  // Let the renderer-owned shadcn overlay handle normal auth states when the
-  // app page is already loaded. Keep the main-process DOM overlay only as a
-  // fallback during main-frame loads, where React cannot render yet.
-  if (mainWindow.webContents.isLoadingMainFrame()) {
-    await setAuthOverlay(mainWindow, {
-      visible: true,
-      message: nextState.message,
-    });
-    return;
-  }
-
-  await setAuthOverlay(mainWindow, { visible: false });
-}
-
-async function setAuthOverlay(
-  win: BrowserWindow | null,
+const setAuthOverlay = async (
+  win: AuthOverlayWindow | null,
   options:
     | {
-        visible: false;
+        readonly visible: false;
       }
     | {
-        visible: true;
-        message: string;
+        readonly visible: true;
+        readonly message: string;
       }
-): Promise<void> {
+): Promise<void> => {
   if (!win || win.isDestroyed()) {
     return;
   }
@@ -197,10 +206,17 @@ async function setAuthOverlay(
 
   try {
     if (win.webContents.isLoadingMainFrame()) {
-      win.webContents.once("did-finish-load", () => {
-        win.webContents.executeJavaScript(script).catch((error) => {
-          console.warn("[electron-main] failed to update auth overlay", error);
-        });
+      win.webContents.once("did-finish-load", (): void => {
+        void (async (): Promise<void> => {
+          try {
+            await win.webContents.executeJavaScript(script);
+          } catch (error) {
+            console.warn(
+              "[electron-main] failed to update auth overlay",
+              error
+            );
+          }
+        })();
       });
       return;
     }
@@ -209,7 +225,49 @@ async function setAuthOverlay(
   } catch (error) {
     console.warn("[electron-main] failed to update auth overlay", error);
   }
-}
+};
+
+const setAuthState = async (nextState: AuthRendererState): Promise<void> => {
+  currentAuthState = nextState;
+  broadcastAuthState();
+
+  if (nextState.status === "idle") {
+    await setAuthOverlay(mainWindow, { visible: false });
+    return;
+  }
+
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+
+  // Let the renderer-owned shadcn overlay handle normal auth states when the
+  // app page is already loaded. Keep the main-process DOM overlay only as a
+  // fallback during main-frame loads, where React cannot render yet.
+  if (mainWindow.webContents.isLoadingMainFrame()) {
+    await setAuthOverlay(mainWindow, {
+      message: nextState.message,
+      visible: true,
+    });
+    return;
+  }
+
+  await setAuthOverlay(mainWindow, { visible: false });
+};
+
+const resetAuthFlow = async (): Promise<void> => {
+  if (pendingAuthRefreshTimer) {
+    clearTimeout(pendingAuthRefreshTimer);
+    pendingAuthRefreshTimer = null;
+  }
+
+  isAuthFlowInProgress = false;
+  currentAuthFlowId += AUTH_FLOW_ID_INCREMENT;
+
+  await setAuthState({
+    message: null,
+    status: "idle",
+  });
+};
 
 // Setup the @better-auth/electron main process handler.
 // Registers the protocol handler, deep-link listeners, CSP updates, and
@@ -224,79 +282,64 @@ registerProtocolClient();
 // Better Auth should register these bridges in setupMain(), but we also
 // register them explicitly so the preload bridge stays reliable in dev builds.
 ipcMain.removeHandler("better-auth:requestAuth");
-ipcMain.handle("better-auth:requestAuth", async (_event, options) => {
-  if (isAuthFlowInProgress) {
-    mainWindow?.show();
-    mainWindow?.focus();
-    return;
-  }
+ipcMain.handle(
+  "better-auth:requestAuth",
+  async (_event: unknown, options: unknown): Promise<void> => {
+    if (isAuthFlowInProgress) {
+      if (mainWindow) {
+        mainWindow.show();
+      }
+      if (mainWindow) {
+        mainWindow.focus();
+      }
+      return;
+    }
 
-  isAuthFlowInProgress = true;
-  currentAuthFlowId += 1;
+    isAuthFlowInProgress = true;
+    currentAuthFlowId += AUTH_FLOW_ID_INCREMENT;
 
-  await setAuthState({
-    status: "awaiting-browser",
-    message: "Waiting for sign-in in your browser...",
-  });
-
-  try {
-    await electronAuthClient.requestAuth(options);
-  } catch (error) {
-    isAuthFlowInProgress = false;
     await setAuthState({
-      status: "error",
-      message: "Couldn't open the browser sign-in flow.",
-      detail: error instanceof Error ? error.message : String(error),
+      message: "Waiting for sign-in in your browser...",
+      status: "awaiting-browser",
     });
-    throw error;
-  }
-});
 
-ipcMain.handle("chatjs:cancel-auth-flow", async () => {
+    try {
+      await electronAuthClient.requestAuth(parseAuthRequestOptions(options));
+    } catch (error) {
+      isAuthFlowInProgress = false;
+      await setAuthState({
+        detail: getAuthErrorDetail(error),
+        message: "Couldn't open the browser sign-in flow.",
+        status: "error",
+      });
+      throw error;
+    }
+  }
+);
+
+ipcMain.handle("chatjs:cancel-auth-flow", async (): Promise<void> => {
   await resetAuthFlow();
 });
-
-ipcMain.removeHandler("better-auth:signOut");
-ipcMain.handle("better-auth:signOut", async () => {
-  const result = await electronAuthClient.signOut();
-  await syncAuthSessionCookies();
-  return result;
-});
-
-ipcMain.removeHandler("better-auth:getUser");
-ipcMain.handle("better-auth:getUser", async () => {
-  const sessionResult = await electronAuthClient.getSession();
-  return sessionResult.data?.user ?? null;
-});
-
-function getAppAssetPath(...segments: string[]): string {
-  return path.join(app.getAppPath(), ...segments);
-}
-
-function isBetterAuthCookieName(name: string): boolean {
-  return (
-    name.startsWith(ELECTRON_AUTH_COOKIE_PREFIX) ||
-    name.startsWith(`__Secure-${ELECTRON_AUTH_COOKIE_PREFIX}`) ||
-    name.endsWith("session_token") ||
-    name.endsWith("session_data")
-  );
-}
-
-async function syncAuthSessionCookies(win?: BrowserWindow | null): Promise<void> {
+const syncAuthSessionCookies = async (
+  win?: AuthSessionWindow | null
+): Promise<void> => {
   const targetWindow = win ?? mainWindow;
-  const targetSession = targetWindow?.webContents.session;
-
-  if (!targetSession) {
+  if (!targetWindow) {
     return;
   }
+  const targetSession = targetWindow.webContents.session;
 
   const url = new URL(APP_URL);
   const existingCookies = await targetSession.cookies.get({ url: url.origin });
 
   await Promise.all(
     existingCookies
-      .filter((cookie) => isBetterAuthCookieName(cookie.name))
-      .map((cookie) => targetSession.cookies.remove(url.origin, cookie.name))
+      .filter((cookie: Readonly<Electron.Cookie>): boolean =>
+        isBetterAuthCookieName(cookie.name, ELECTRON_AUTH_COOKIE_PREFIX)
+      )
+      .map(async (cookie: Readonly<Electron.Cookie>): Promise<void> => {
+        await targetSession.cookies.remove(url.origin, cookie.name);
+      })
   );
 
   const cookieHeader = electronAuthClient.getCookie();
@@ -306,56 +349,78 @@ async function syncAuthSessionCookies(win?: BrowserWindow | null): Promise<void>
   }
 
   const cookies = cookieHeader
-    .split(/;\s*/)
-    .map((entry: string) => {
+    .split(/;\s*/u)
+    .map((entry: string): Readonly<{ name: string; value: string }> | null => {
       const index = entry.indexOf("=");
-      if (index < 1) {
+      if (index < COOKIE_SEPARATOR_LENGTH) {
         return null;
       }
 
       return {
-        name: entry.slice(0, index),
-        value: entry.slice(index + 1),
+        name: entry.slice(COOKIE_NAME_START_INDEX, index),
+        value: entry.slice(index + COOKIE_SEPARATOR_LENGTH),
       };
     })
-    .filter((cookie): cookie is { name: string; value: string } => cookie !== null)
-    .filter((cookie: { name: string; value: string }) => isBetterAuthCookieName(cookie.name));
+    .filter((cookie) => cookie !== null)
+    .filter((cookie: Readonly<{ name: string; value: string }>): boolean =>
+      isBetterAuthCookieName(cookie.name, ELECTRON_AUTH_COOKIE_PREFIX)
+    );
 
   await Promise.all(
-    cookies.map((cookie: { name: string; value: string }) =>
-      targetSession.cookies.set({
-        name: cookie.name,
-        path: "/",
-        secure: url.protocol === "https:",
-        url: url.origin,
-        value: cookie.value,
-      })
+    cookies.map(
+      async (
+        cookie: Readonly<{ name: string; value: string }>
+      ): Promise<void> => {
+        await targetSession.cookies.set({
+          name: cookie.name,
+          path: "/",
+          secure: url.protocol === "https:",
+          url: url.origin,
+          value: cookie.value,
+        });
+      }
     )
   );
-}
+};
 
-function hasSessionCookie(cookieHeader: string): boolean {
-  return /(?:^|;\s*)(?:__Secure-)?better-auth\.session_token=/.test(cookieHeader);
-}
+ipcMain.removeHandler("better-auth:signOut");
+ipcMain.handle("better-auth:signOut", async () => {
+  const result = await electronAuthClient.signOut();
+  await syncAuthSessionCookies();
+  return result;
+});
+ipcMain.removeHandler("better-auth:getUser");
+ipcMain.handle("better-auth:getUser", async () => {
+  const sessionResult = await electronAuthClient.getSession();
+  const sessionData = sessionResult.data;
+  if (!sessionData) {
+    return null;
+  }
+  return sessionData.user ?? null;
+});
 
-async function authenticateFromDeepLink(url: string): Promise<boolean> {
+const getAppAssetPath = (...segments: readonly string[]): string =>
+  path.join(app.getAppPath(), ...segments);
+
+const authenticateFromDeepLink = async (url: string): Promise<boolean> => {
   try {
     if (!isAuthFlowInProgress) {
       return false;
     }
 
     const parsed = new URL(url);
-    const token = parsed.hash.startsWith("#token=")
-      ? parsed.hash.slice("#token=".length)
-      : null;
+    if (!parsed.hash.startsWith("#token=")) {
+      return false;
+    }
 
-    if (!token) {
+    const token = parsed.hash.slice("#token=".length);
+    if (token === "") {
       return false;
     }
 
     await setAuthState({
-      status: "finishing",
       message: "Finishing sign-in...",
+      status: "finishing",
     });
     await electronAuthClient.authenticate({ token });
     return true;
@@ -363,15 +428,17 @@ async function authenticateFromDeepLink(url: string): Promise<boolean> {
     console.error("[electron-main] deep link authentication failed", error);
     isAuthFlowInProgress = false;
     await setAuthState({
-      status: "error",
+      detail: getAuthErrorDetail(error),
       message: "We couldn't finish sign-in automatically.",
-      detail: error instanceof Error ? error.message : String(error),
+      status: "error",
     });
     return false;
   }
-}
+};
 
-async function waitForElectronSession(timeoutMs = 8_000): Promise<boolean> {
+const waitForElectronSession = async (
+  timeoutMs = AUTH_SESSION_TIMEOUT_MS
+): Promise<boolean> => {
   const start = Date.now();
 
   while (Date.now() - start < timeoutMs) {
@@ -379,8 +446,10 @@ async function waitForElectronSession(timeoutMs = 8_000): Promise<boolean> {
     const hasCookie = hasSessionCookie(cookieHeader);
 
     try {
+      // oxlint-disable-next-line no-await-in-loop -- Poll sequentially until the native cookie and server session agree.
       const sessionResult = await electronAuthClient.getSession();
-      const hasUser = !!sessionResult.data?.user;
+      const sessionData = sessionResult.data;
+      const hasUser = Boolean(sessionData && sessionData.user);
 
       if (hasCookie && hasUser) {
         return true;
@@ -389,13 +458,14 @@ async function waitForElectronSession(timeoutMs = 8_000): Promise<boolean> {
       console.warn("[electron-main] session check failed while waiting", error);
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    // oxlint-disable-next-line no-await-in-loop -- Back off between session polls rather than issue overlapping requests.
+    await sleep(AUTH_SESSION_POLL_INTERVAL_MS);
   }
 
   return false;
-}
+};
 
-function scheduleAuthRefresh(): void {
+const scheduleAuthRefresh = (): void => {
   const targetWindow = mainWindow;
   const authFlowId = currentAuthFlowId;
 
@@ -411,56 +481,58 @@ function scheduleAuthRefresh(): void {
   targetWindow.show();
   targetWindow.focus();
 
-  pendingAuthRefreshTimer = setTimeout(() => {
-    void waitForElectronSession()
-      .then(async (ready) => {
+  pendingAuthRefreshTimer = setTimeout((): void => {
+    void (async (): Promise<void> => {
+      try {
+        const ready = await waitForElectronSession();
         if (!ready) {
           isAuthFlowInProgress = false;
-          if (authFlowId === currentAuthFlowId) {
-            await setAuthState({
-              status: "timed-out",
-              message: "Still waiting for the desktop app to finish signing in...",
-              detail: "Please try the browser flow again.",
-            });
-          } else {
-            await setAuthState({
-              status: "idle",
-              message: null,
-            });
-          }
+          await setAuthState(
+            authFlowId === currentAuthFlowId
+              ? {
+                  detail: "Please try the browser flow again.",
+                  message:
+                    "Still waiting for the desktop app to finish signing in...",
+                  status: "timed-out",
+                }
+              : {
+                  message: null,
+                  status: "idle",
+                }
+          );
           return;
         }
 
         await syncAuthSessionCookies(targetWindow);
         isAuthFlowInProgress = false;
         await setAuthState({
-          status: "idle",
           message: null,
+          status: "idle",
         });
-      })
-      .catch((error) => {
+      } catch (error) {
         console.error("[electron-main] auth refresh failed", error);
         isAuthFlowInProgress = false;
-        void setAuthState({
-          status: "error",
+        await setAuthState({
+          detail: getAuthErrorDetail(error),
           message: "Sign-in refresh failed.",
-          detail: error instanceof Error ? error.message : String(error),
+          status: "error",
         });
-      });
+      }
+    })();
     pendingAuthRefreshTimer = null;
-  }, 250);
-}
+  }, AUTH_REFRESH_DELAY_MS);
+};
 
-async function createWindow(): Promise<BrowserWindow> {
+const createWindow = (): BrowserWindow => {
   const win = new BrowserWindow({
     ...WINDOW_DEFAULTS,
     ...(process.platform === "darwin" || process.platform === "win32"
       ? { titleBarStyle: "default" as const }
-      : { titleBarStyle: "hidden" as const, titleBarOverlay: true }),
+      : { titleBarOverlay: true, titleBarStyle: "hidden" as const }),
     webPreferences: {
-      preload: getAppAssetPath("dist", "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
+      preload: getAppAssetPath("dist", "preload.js"),
     },
   });
 
@@ -471,25 +543,26 @@ async function createWindow(): Promise<BrowserWindow> {
   // Avoid touching encrypted auth storage on app launch. On macOS this can
   // trigger an immediate Keychain prompt before the window even loads, which
   // feels like a crash. Session sync still runs after explicit auth events.
-  win.loadURL(APP_URL);
+  void win.loadURL(APP_URL);
 
-  win.webContents.on("did-finish-load", () => {
-    if (currentAuthOverlayMessage) {
+  win.webContents.on("did-finish-load", (): void => {
+    const overlayMessage = currentAuthOverlayMessage;
+    if (overlayMessage !== null && overlayMessage !== "") {
       void setAuthOverlay(win, {
+        message: overlayMessage,
         visible: true,
-        message: currentAuthOverlayMessage,
       });
     }
   });
 
   // Open all new-window requests (including OAuth popups) in the default browser.
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+  win.webContents.setWindowOpenHandler(({ url }: Readonly<{ url: string }>) => {
+    void shell.openExternal(url);
     return { action: "deny" };
   });
 
   // Minimize to tray on close
-  win.on("close", (event) => {
+  win.on("close", (event: Pick<Electron.Event, "preventDefault">): void => {
     if (!isQuitting) {
       event.preventDefault();
       win.hide();
@@ -501,47 +574,53 @@ async function createWindow(): Promise<BrowserWindow> {
   }
 
   return win;
-}
-
-function createTray(): Tray {
+};
+const createTray = (): Tray => {
   const iconPath = getAppAssetPath("build", "icon.png");
   const trayIcon = nativeImage.createFromPath(iconPath);
-  const t = new Tray(trayIcon.resize({ width: 16, height: 16 }));
+  const trayInstance = new Tray(trayIcon.resize({ height: 16, width: 16 }));
 
   const contextMenu = Menu.buildFromTemplate([
     {
-      label: `Show ${APP_NAME}`,
-      click: () => {
-        mainWindow?.show();
-        mainWindow?.focus();
+      click: (): void => {
+        if (mainWindow) {
+          mainWindow.show();
+        }
+        if (mainWindow) {
+          mainWindow.focus();
+        }
       },
+      label: `Show ${APP_NAME}`,
     },
     { type: "separator" },
     {
-      label: "Quit",
-      click: () => {
+      click: (): void => {
         isQuitting = true;
         app.quit();
       },
+      label: "Quit",
     },
   ]);
 
-  t.setToolTip(APP_NAME);
-  t.setContextMenu(contextMenu);
+  trayInstance.setToolTip(APP_NAME);
+  trayInstance.setContextMenu(contextMenu);
 
-  t.on("click", () => {
-    if (mainWindow?.isVisible()) {
+  trayInstance.on("click", (): void => {
+    if (mainWindow && mainWindow.isVisible()) {
       mainWindow.hide();
     } else {
-      mainWindow?.show();
-      mainWindow?.focus();
+      if (mainWindow) {
+        mainWindow.show();
+      }
+      if (mainWindow) {
+        mainWindow.focus();
+      }
     }
   });
 
-  return t;
-}
-
-function setupApplicationMenu(): void {
+  return trayInstance;
+};
+const setupApplicationMenu = (): void => {
   if (process.platform !== "darwin") {
     return;
   }
@@ -564,8 +643,9 @@ function setupApplicationMenu(): void {
     {
       role: "editMenu",
     },
-    ...(!app.isPackaged
-      ? ([
+    ...(app.isPackaged
+      ? []
+      : ([
           {
             role: "viewMenu",
             submenu: [
@@ -575,29 +655,22 @@ function setupApplicationMenu(): void {
               { role: "toggleDevTools" },
             ],
           },
-        ] satisfies MenuItemConstructorOptions[])
-      : []),
+        ] satisfies MenuItemConstructorOptions[])),
     {
       role: "windowMenu",
     },
   ];
 
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
-}
+};
 
-function setupAutoUpdater(): void {
+const setupAutoUpdater = async (): Promise<void> => {
   if (!app.isPackaged) {
     return;
   }
 
   try {
-    const { updateElectronApp } = require("update-electron-app") as {
-      updateElectronApp: (options?: {
-        logger?: Pick<typeof console, "error" | "log" | "warn">;
-        notifyUser?: boolean;
-        updateInterval?: string;
-      }) => void;
-    };
+    const { updateElectronApp } = await import("update-electron-app");
 
     updateElectronApp({
       logger: console,
@@ -610,60 +683,64 @@ function setupAutoUpdater(): void {
       error
     );
   }
-}
+};
 
-ipcMain.handle("chatjs:sync-auth-session", async () => {
+ipcMain.handle("chatjs:sync-auth-session", async (): Promise<void> => {
   await syncAuthSessionCookies();
 });
-
 ipcMain.handle("chatjs:get-auth-state", () => currentAuthState);
 
-app.whenReady().then(async () => {
+void (async (): Promise<void> => {
+  await app.whenReady();
   app.setName(APP_NAME);
   setupApplicationMenu();
-  mainWindow = await createWindow();
+  mainWindow = createWindow();
   tray = createTray();
-  setupAutoUpdater();
+  void setupAutoUpdater();
 
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      void createWindow().then((window) => {
-        mainWindow = window;
-      });
-    } else {
-      mainWindow?.show();
+  app.on("activate", (): void => {
+    if (BrowserWindow.getAllWindows().length === EMPTY_WINDOW_COUNT) {
+      mainWindow = createWindow();
+    } else if (mainWindow) {
+      mainWindow.show();
     }
   });
-});
+})();
 
-app.on("open-url", (_event, url) => {
-  void authenticateFromDeepLink(url).then((didAuthenticate) => {
+app.on("open-url", (_event: unknown, url): void => {
+  void (async (): Promise<void> => {
+    const didAuthenticate = await authenticateFromDeepLink(url);
     if (didAuthenticate) {
       scheduleAuthRefresh();
     }
-  });
+  })();
 });
 
-app.on("second-instance", (_event, commandLine) => {
-  const deepLinkUrl = commandLine.find((value) =>
-    value.startsWith(`${APP_SCHEME}://`)
-  );
+app.on(
+  "second-instance",
+  (_event: unknown, commandLine: readonly string[]): void => {
+    const deepLinkUrl = commandLine.find((value): boolean =>
+      value.startsWith(`${APP_SCHEME}://`)
+    );
 
-  if (deepLinkUrl) {
-    void authenticateFromDeepLink(deepLinkUrl).then((didAuthenticate) => {
-      if (didAuthenticate) {
-        scheduleAuthRefresh();
-      }
-    });
+    if (typeof deepLinkUrl === "string" && deepLinkUrl !== "") {
+      void (async (): Promise<void> => {
+        const didAuthenticate = await authenticateFromDeepLink(deepLinkUrl);
+        if (didAuthenticate) {
+          scheduleAuthRefresh();
+        }
+      })();
+    }
+  }
+);
+app.on("before-quit", (): void => {
+  isQuitting = true;
+  if (tray) {
+    tray.destroy();
   }
 });
 
-app.on("before-quit", () => {
-  isQuitting = true;
-  tray?.destroy();
-});
-
-app.on("window-all-closed", () => {
+app.on("window-all-closed", (): void => {
   if (process.platform !== "darwin") {
     app.quit();
   }

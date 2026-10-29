@@ -1,26 +1,71 @@
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { spawnSync } from "node:child_process";
 import type { ForgeConfig } from "@electron-forge/shared-types";
-import { MakerDeb } from "@electron-forge/maker-deb";
 import { MakerDMG } from "@electron-forge/maker-dmg";
+import { MakerDeb } from "@electron-forge/maker-deb";
 import { MakerRpm } from "@electron-forge/maker-rpm";
 import { MakerSquirrel } from "@electron-forge/maker-squirrel";
 import { MakerZIP } from "@electron-forge/maker-zip";
+import path from "node:path";
+import { spawn, spawnSync } from "node:child_process";
+import { once } from "node:events";
 
-type Branding = {
+interface Branding {
   appName: string;
   appPrefix: string;
   appUrl: string;
   orgName?: string;
   orgEmail?: string;
-};
+}
 
-const appRoot = __dirname;
-const brandingPath = join(appRoot, "branding.json");
+const SUCCESS_EXIT_CODE = 0;
+
+const appRoot = import.meta.dirname;
+const brandingPath = path.join(appRoot, "branding.json");
 let prebuildComplete = false;
 
-function loadBranding(): Branding {
+const runBunScript = (
+  script: string,
+  env: Readonly<Partial<NodeJS.ProcessEnv>> = {}
+): void => {
+  const result = spawnSync("bun", ["run", script], {
+    env: { ...process.env, ...env },
+    stdio: "inherit",
+  });
+
+  if (result.status !== SUCCESS_EXIT_CODE) {
+    throw new Error(
+      `bun run ${script} failed with exit code ${result.status ?? "unknown"}`
+    );
+  }
+};
+
+const ensurePrebuild = (): void => {
+  if (prebuildComplete) {
+    return;
+  }
+
+  runBunScript("prebuild");
+  prebuildComplete = true;
+};
+
+const runBunScriptAsync = async (
+  script: string,
+  env: Readonly<Partial<NodeJS.ProcessEnv>> = {}
+): Promise<void> => {
+  const child = spawn("bun", ["run", script], {
+    env: { ...process.env, ...env },
+    stdio: "inherit",
+  });
+  const exit: readonly unknown[] = await once(child, "close");
+  const [status] = exit;
+  if (status !== SUCCESS_EXIT_CODE) {
+    throw new Error(
+      `bun run ${script} failed with exit code ${typeof status === "number" ? status : "unknown"}`
+    );
+  }
+};
+
+const loadBranding = (): Branding => {
   ensurePrebuild();
 
   if (!existsSync(brandingPath)) {
@@ -30,64 +75,59 @@ function loadBranding(): Branding {
     );
   }
 
-  const branding = JSON.parse(readFileSync(brandingPath, "utf8")) as Partial<Branding>;
+  const branding: unknown = JSON.parse(readFileSync(brandingPath, "utf-8"));
 
-  if (!branding.appName || !branding.appPrefix || !branding.appUrl) {
+  if (
+    typeof branding !== "object" ||
+    branding === null ||
+    !("appName" in branding) ||
+    typeof branding.appName !== "string" ||
+    !branding.appName ||
+    !("appPrefix" in branding) ||
+    typeof branding.appPrefix !== "string" ||
+    !branding.appPrefix ||
+    !("appUrl" in branding) ||
+    typeof branding.appUrl !== "string" ||
+    !branding.appUrl
+  ) {
     throw new Error(
       `Electron branding file ${brandingPath} is invalid. Expected appName, appPrefix, and appUrl.`
     );
   }
 
-  return branding as Branding;
-}
+  return {
+    appName: branding.appName,
+    appPrefix: branding.appPrefix,
+    appUrl: branding.appUrl,
+    orgEmail:
+      "orgEmail" in branding && typeof branding.orgEmail === "string"
+        ? branding.orgEmail
+        : undefined,
+    orgName:
+      "orgName" in branding && typeof branding.orgName === "string"
+        ? branding.orgName
+        : undefined,
+  };
+};
 
-function runBunScript(script: string, env: NodeJS.ProcessEnv = {}): void {
-  const result = spawnSync("bun", ["run", script], {
-    stdio: "inherit",
-    env: { ...process.env, ...env },
-  });
-
-  if (result.status !== 0) {
-    throw new Error(`bun run ${script} failed with exit code ${result.status ?? "unknown"}`);
-  }
-}
-
-function ensurePrebuild(): void {
-  if (prebuildComplete) {
-    return;
-  }
-
-  runBunScript("prebuild");
-  prebuildComplete = true;
-}
-
-function createForgeConfig(): ForgeConfig {
+const createForgeConfig = (): ForgeConfig => {
   const branding = loadBranding();
   const { appName, appPrefix, orgName, orgEmail } = branding;
 
   return {
-    packagerConfig: {
-      name: appName,
-      executableName: appPrefix,
-      icon: "./build/icon",
-      appBundleId: `dev.${appPrefix}.app`,
-      appCategoryType: "public.app-category.productivity",
-      asar: true,
-      protocols: [
-        {
-          name: `${appName} Auth`,
-          schemes: [appPrefix],
-        },
-      ],
-      ignore: [
-        /^\/out($|\/)/,
-        /^\/release($|\/)/,
-        /^\/src($|\/)/,
-        /^\/node_modules($|\/)/,
-        /^\/scripts($|\/)/,
-        /^\/README\.md$/,
-        /^\/tsconfig\.json$/,
-      ],
+    hooks: {
+      generateAssets: async () => {
+        if (!prebuildComplete) {
+          await runBunScriptAsync("prebuild");
+          prebuildComplete = true;
+        }
+      },
+      prePackage: async () => {
+        await runBunScriptAsync("build", { NODE_ENV: "production" });
+      },
+      preStart: async () => {
+        await runBunScriptAsync("build", { NODE_ENV: "development" });
+      },
     },
     makers: [
       new MakerZIP({}, ["darwin"]),
@@ -99,9 +139,9 @@ function createForgeConfig(): ForgeConfig {
       ),
       new MakerSquirrel(
         {
-          name: appPrefix,
           authors: orgName ?? appName,
           description: `${appName} desktop application`,
+          name: appPrefix,
           setupExe: `${appName}-windows.exe`,
         },
         ["win32"]
@@ -110,13 +150,16 @@ function createForgeConfig(): ForgeConfig {
         {
           options: {
             bin: appPrefix,
-            maintainer:
-              orgName && orgEmail
-                ? `${orgName} <${orgEmail}>`
-                : (orgName ?? orgEmail ?? appName),
+            categories: ["Utility"],
             homepage: branding.appUrl,
             icon: "./build/icon.png",
-            categories: ["Utility"],
+            maintainer:
+              typeof orgName === "string" &&
+              orgName !== "" &&
+              typeof orgEmail === "string" &&
+              orgEmail !== ""
+                ? `${orgName} <${orgEmail}>`
+                : (orgName ?? orgEmail ?? appName),
           },
         },
         ["linux"]
@@ -133,19 +176,31 @@ function createForgeConfig(): ForgeConfig {
         ["linux"]
       ),
     ],
-    hooks: {
-      generateAssets: async () => {
-        ensurePrebuild();
-      },
-      preStart: async () => {
-        runBunScript("build", { NODE_ENV: "development" });
-      },
-      prePackage: async () => {
-        runBunScript("build", { NODE_ENV: "production" });
-      },
+    packagerConfig: {
+      appBundleId: `dev.${appPrefix}.app`,
+      appCategoryType: "public.app-category.productivity",
+      asar: true,
+      executableName: appPrefix,
+      icon: "./build/icon",
+      ignore: [
+        /^\/out(?:$|\/)/u,
+        /^\/release(?:$|\/)/u,
+        /^\/src(?:$|\/)/u,
+        /^\/node_modules(?:$|\/)/u,
+        /^\/scripts(?:$|\/)/u,
+        /^\/README\.md$/u,
+        /^\/tsconfig\.json$/u,
+      ],
+      name: appName,
+      protocols: [
+        {
+          name: `${appName} Auth`,
+          schemes: [appPrefix],
+        },
+      ],
     },
   };
-}
+};
 
 const config = createForgeConfig();
 

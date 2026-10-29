@@ -48,12 +48,18 @@ apps/*/test-results/
 apps/*/playwright-report/
 apps/*/blob-report/
 apps/*/playwright/*
+apps/*/uiverify-archive/
 
 tsconfig.tsbuildinfo
 
 packages/*/dist
 packages/cli/templates
 templates
+
+# Blume
+apps/docs/.blume/
+apps/docs/.blume-verify/
+apps/docs/dist/
 
 # Evalite DB
 evals/db/
@@ -68,12 +74,29 @@ apps/electron/release/
 apps/electron/out/
 apps/electron/branding.json
 
-/.skillz
-/AGENTS.md
-/AGENTS.md.bak
-/CLAUDE.md
-/CLAUDE.md.bak
-# END Skiller Generated Files
 .devtools
 .cursor/hooks/state
 .codex/environments/
+
+apps/docs/.uiverify-shots/
+
+# Eve generated worker output
+apps/chat/.eve/
+apps/chat/.output/
+apps/chat/tests/eve-fixture/.eve/
+apps/chat/tests/eve-fixture/.output/
+apps/chat/tests/eve-results/
+# Generated shadcn source manifest
+packages/registry/registry.json
+
+packages/chat-visual-tests/uiverify-archive/
+packages/chat-visual-tests/**/__screenshots__/
+apps/chat/tests/visual/**/__screenshots__/
+
+apps/chat/guest/.eve/
+apps/chat/guest/.output/
+
+# Checkout-local registry-mirror coordination locks
+packages/registry/mirror-manifest.json*.lock
+
+packages/chat-visual-tests/.vitest-attachments/

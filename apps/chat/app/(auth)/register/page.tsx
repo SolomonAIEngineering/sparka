@@ -1,17 +1,30 @@
+import React, { Suspense } from "react";
+
+import { AuthCardSkeleton } from "@/components/auth-card-skeleton";
 import type { Metadata } from "next";
 import { SignupForm } from "@/components/signup-form";
 
-export const metadata: Metadata = {
-  title: "Create an account",
+const metadata: Metadata = {
   description: "Create an account to get started.",
+  title: "Create an account",
 };
 
-export default function RegisterPage() {
-  return (
-    <div className="container m-auto flex h-dvh w-screen flex-col items-center justify-center px-4">
-      <div className="mx-auto w-full sm:w-[480px]">
+const RegisterPage = (): React.JSX.Element => (
+  <div className="container m-auto flex h-dvh w-screen flex-col items-center justify-center px-4">
+    <div className="mx-auto w-full sm:w-[480px]">
+      <Suspense
+        fallback={
+          <AuthCardSkeleton
+            description="Get started in seconds"
+            title="Create an account"
+          />
+        }
+      >
         <SignupForm />
-      </div>
+      </Suspense>
     </div>
-  );
-}
+  </div>
+);
+
+export { metadata };
+export default RegisterPage;

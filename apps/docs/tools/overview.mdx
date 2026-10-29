@@ -1,0 +1,88 @@
+---
+title: Tools Overview
+description: Install and distribute typed ChatJS tools with shadcn registries
+---
+
+The ChatJS registry distributes editable source code using shadcn. A tool includes server logic, dependencies, and a declarative registration descriptor. Tools can include their own client renderer. Built-in search and code-execution items include renderers for their own output. Installed tools become part of your app's typed tool system. All installed and custom tools use native EVE definitions. Installed registry items use a `contractVersion: 1` descriptor. Custom tools are registered directly in `custom-tools.ts` without a descriptor.
+
+```bash
+npx @chat-js/cli@latest add word-count
+```
+
+shadcn resolves the item and its dependencies, installs packages, and writes the source files. ChatJS then regenerates separate server and client registrations. Existing source follows shadcn's overwrite prompts. Pass `--overwrite` to replace it.
+
+## Available tools
+
+| Tool | Purpose | Credentials |
+| --- | --- | --- |
+| Delete Document (`delete-document`) | Remove a document from the current conversation after owner approval | None |
+| [Word Count](./word-count) | Count words, characters, and sentences | None |
+| [Get Weather](./get-weather) | Fetch weather for coordinates | None |
+| [Tavily Search](../features/web-search) | Search with topic, depth, and domain options | `TAVILY_API_KEY` |
+| [Firecrawl Search](../features/web-search) | Search with page content extraction | `FIRECRAWL_API_KEY` |
+| [Vercel Code Execution](../features/code-execution) | Run Python and JavaScript in Vercel Sandbox | Vercel OIDC or team/project/token |
+| [Generate Video](./generate-video) | Generate video clips | Selected gateway and file storage |
+| [Generate Image](./generate-image) | Generate and edit images | Selected gateway and file storage |
+| [Retrieve URL](./retrieve-url) | Extract a page through Firecrawl | `FIRECRAWL_API_KEY` |
+
+## Document deletion with approval
+
+```bash
+npx @chat-js/cli@latest add delete-document
+```
+
+This optional bundle installs `deleteDocument` and its `readDocument` dependency. The agent first calls `readDocument`, then passes the exact title and revision to `deleteDocument` to request owner approval. Rejection leaves the document unchanged. If the document changes before approval, deletion fails and requires a fresh request.
+
+Deletion removes the document from the current conversation. Existing history snapshots and other branches retain their revisions. This is not permanent content erasure. The tool requires signed-in ownership, enabled document tools, and EVE's native approval receipt. It adds no provider credentials or tool usage charge.
+
+## Installed files
+
+| File | Ownership |
+| --- | --- |
+| `tools/chatjs/<id>/tool.ts` | Editable server implementation |
+| `tools/chatjs/<id>/renderer.tsx` | Editable client renderer |
+| `tools/chatjs/<id>/chatjs.json` | Installed registration and environment descriptor |
+| `composition/generated/tools.ts`, `ui.ts` | Generated registrations |
+| `composition/custom/custom-tools.ts`, `custom-ui.ts` | Your custom registrations |
+
+Keep manual registrations in the custom modules. Sync rejects duplicate installed descriptor keys and edited generated indexes. Generated indexes detect collisions with custom registrations when loaded. Sync also refuses to remove a previously registered tool just because its descriptor disappeared. Restore the descriptor before syncing.
+
+Registry items specify explicit file targets. This integration uses `tools/chatjs`. The former `paths.tools` configuration and marker-based injection are removed. Built-in product tools remain in `tools/platform`.
+
+## External registries
+
+Configure standard namespaces in `components.json`:
+
+```json
+{
+  "registries": {
+    "@chatjs": "https://unpkg.com/@chat-js/registry@1/dist/r/{name}.json",
+    "@acme": "https://example.com/r/{name}.json"
+  }
+}
+```
+
+```bash
+npx @chat-js/cli@latest add @acme/my-tool
+```
+
+You can also pass a complete registry item URL or local JSON path. Registry requests require HTTPS, with HTTP allowed for local loopback development. `--registry` has been replaced by standard namespace configuration.
+
+## Direct shadcn installation
+
+```bash
+npx shadcn@4.21.0 add @chatjs/word-count
+npx @chat-js/cli@latest sync
+```
+
+shadcn installs source. `sync` reads installed descriptors and generates ChatJS registrations without evaluating third-party source. `chat-js add` performs both steps. If registration fails after installation, fix the reported issue and run `sync` again. Package installation is not transactional.
+
+Tool environment requirements live in `chatjs.json`, generated from typed item metadata. `check-env` reads those descriptors without importing server tools.
+
+## Related
+
+- [Registry Overview](../registry) for categories, source ownership, and distribution
+
+- [CLI add](../cli/add) for command options
+- [Adding Tools](./install) for the installation steps
+- [Tools](./authoring) for source authoring

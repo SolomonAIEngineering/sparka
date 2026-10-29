@@ -9,44 +9,42 @@ const TaskUpdateSchema = BaseStreamUpdateSchema.extend({
   status: z.enum(["running", "completed"]),
 });
 
-const WebSearchSchema = TaskUpdateSchema.extend({
-  type: z.literal("web"),
-  queries: z.array(z.string()),
-  results: z
-    .array(
-      z.object({
-        url: z.string(),
-        title: z.string(),
-        content: z.string(),
-        source: z.enum(["web", "academic", "x"]),
-        // tweetId: z.string().optional(),
-      })
-    )
-    .optional(),
+const SearchResultItemSchema = z.object({
+  content: z.string(),
+  source: z.enum(["web", "academic", "x"]),
+  title: z.string(),
+  // Optional `tweetId` field, currently disabled.
+  url: z.string(),
 });
 
-export type WebSearchUpdate = z.infer<typeof WebSearchSchema>;
+const WebSearchSchema = TaskUpdateSchema.extend({
+  queries: z.array(z.string()),
+  results: z.array(SearchResultItemSchema).optional(),
+  type: z.literal("web"),
+});
 
-export type SearchResultItem = NonNullable<WebSearchUpdate["results"]>[number];
+type WebSearchUpdate = z.infer<typeof WebSearchSchema>;
+
+type SearchResultItem = NonNullable<WebSearchUpdate["results"]>[number];
 
 const StartedSchema = BaseStreamUpdateSchema.extend({
-  type: z.literal("started"),
   timestamp: z.number(),
+  type: z.literal("started"),
 });
 
 const CompletedSchema = BaseStreamUpdateSchema.extend({
-  type: z.literal("completed"),
   timestamp: z.number(),
+  type: z.literal("completed"),
 });
 
 const ThoughtsSchema = TaskUpdateSchema.extend({
-  type: z.literal("thoughts"),
   message: z.string(),
+  type: z.literal("thoughts"),
 });
 
 const WritingSchema = TaskUpdateSchema.extend({
-  type: z.literal("writing"),
   message: z.string().optional(),
+  type: z.literal("writing"),
 });
 
 const ResearchUpdateSchema = z.discriminatedUnion("type", [
@@ -57,4 +55,6 @@ const ResearchUpdateSchema = z.discriminatedUnion("type", [
   WritingSchema,
 ]);
 
-export type ResearchUpdate = z.infer<typeof ResearchUpdateSchema>;
+type ResearchUpdate = z.infer<typeof ResearchUpdateSchema>;
+export { ResearchUpdateSchema };
+export type { ResearchUpdate, SearchResultItem, WebSearchUpdate };

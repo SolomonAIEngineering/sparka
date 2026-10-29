@@ -1,370 +1,752 @@
 import {
-	cancel,
-	confirm,
-	isCancel,
-	multiselect,
-	select,
-	text,
-} from "@clack/prompts";
-import type { RegistryIndexItem } from "../registry/fetch";
-import {
-	AUTHENTICATION_DEFAULTS,
-	FEATURES_DEFAULTS,
+  AUTHENTICATION_DEFAULTS,
+  FEATURES_DEFAULTS,
 } from "../../../../apps/chat/lib/config-schema";
-import { GATEWAY_MODEL_DEFAULTS } from "../../../../apps/chat/lib/ai/gateway-model-defaults";
 import {
-	authEnvRequirements,
-	builtInToolEnvRequirements,
-	coreFeatureEnvRequirements,
-	gatewayEnvRequirements,
+  AUTH_PROVIDERS,
+  BUILT_IN_TOOL_KEYS,
+  CORE_FEATURE_KEYS,
+  DOCUMENT_TYPE_KEYS,
+  GATEWAYS,
+} from "#cli/types";
+import type {
+  AuthProvider,
+  BuiltInToolKey,
+  CoreFeatureKey,
+  DocumentTypeKey,
+  Gateway,
+} from "#cli/types";
+import {
+  INSTALLABLE_STORAGE_PROVIDERS,
+  parseStorageOptions,
+} from "./storage-provider";
+import {
+  authEnvRequirements,
+  builtInToolEnvRequirements,
+  coreFeatureEnvRequirements,
+  gatewayEnvRequirements,
 } from "./config-requirements";
 import {
-	AUTH_PROVIDERS,
-	type AuthProvider,
-	BUILT_IN_TOOL_KEYS,
-	type BuiltInToolKey,
-	CORE_FEATURE_KEYS,
-	type CoreFeatureKey,
-	DOCUMENT_TYPE_KEYS,
-	type DocumentTypeKey,
-	GATEWAYS,
-	type Gateway,
-} from "../types";
-import { highlighter } from "../utils/highlighter";
-import { logger } from "../utils/logger";
-
-const defaultTools = GATEWAY_MODEL_DEFAULTS["vercel"].tools;
-
-const CORE_FEATURE_DEFAULTS: Record<CoreFeatureKey, boolean> = {
-	attachments: FEATURES_DEFAULTS.attachments,
-	parallelResponses: FEATURES_DEFAULTS.parallelResponses,
-	documents: defaultTools.documents.enabled,
-	mcp: defaultTools.mcp.enabled,
-	followupSuggestions: defaultTools.followupSuggestions.enabled,
-};
-
-const DOCUMENT_TYPE_DEFAULTS: Record<DocumentTypeKey, boolean> = {
-	text: defaultTools.documents.types.text,
-	code: defaultTools.documents.types.code,
-	sheet: defaultTools.documents.types.sheet,
-};
-
-const BUILT_IN_TOOL_DEFAULTS: Record<BuiltInToolKey, boolean> = {
-	webSearch: defaultTools.webSearch.enabled,
-	urlRetrieval: defaultTools.urlRetrieval.enabled,
-	deepResearch: defaultTools.deepResearch.enabled,
-	codeExecution: defaultTools.codeExecution.enabled,
-	imageGeneration: defaultTools.image.enabled,
-	videoGeneration: defaultTools.video.enabled,
-};
+  cancel,
+  confirm,
+  isCancel,
+  multiselect,
+  select,
+  text,
+} from "@clack/prompts";
+import type { GatewayDefinition } from "@chat-js/gateways/definition";
+import type { Option } from "@clack/prompts";
+import { PROVIDER_NAMES } from "files-sdk/providers";
+import type { ReadonlyInput } from "./readonly-input";
+import type { RegistryIndexItem } from "#cli/registry/schema";
+import type { StorageSelection } from "#cli/registry/storage";
+import { getStorageEnvironmentRequirements } from "../../../registry/src/storage/environment";
+import { highlighter } from "#cli/utils/highlighter";
+import { resolveStorage } from "#cli/registry/storage";
 
 const AUTH_DEFAULTS: Record<AuthProvider, boolean> = AUTHENTICATION_DEFAULTS;
 
 const CORE_FEATURE_LABELS: Record<CoreFeatureKey, string> = {
-	attachments: "Attachments",
-	parallelResponses: "Parallel Responses",
-	documents: "Documents",
-	mcp: "MCP Tool Servers",
-	followupSuggestions: "Follow-up Suggestions",
+  attachments: "Attachments",
+  documents: "Documents",
+  followupSuggestions: "Follow-up Suggestions",
+  mcp: "MCP Tool Servers",
+  projects: "Projects",
+  feedback: "Message feedback",
+  parallelResponses: "Parallel Responses",
 };
 
 const DOCUMENT_TYPE_LABELS: Record<DocumentTypeKey, string> = {
-	text: "Text Documents",
-	code: "Code Documents",
-	sheet: "Spreadsheet Documents",
+  code: "Code Documents",
+  sheet: "Spreadsheet Documents",
+  text: "Text Documents",
 };
 
 const DOCUMENT_TYPE_HINTS: Record<DocumentTypeKey, string> = {
-	text: "Notes, guides, markdown, and long-form writing",
-	code: "Code files and snippets",
-	sheet: "CSV-based tables and structured data",
+  code: "Code files and snippets",
+  sheet: "CSV-based tables and structured data",
+  text: "Notes, guides, markdown, and long-form writing",
 };
 
 const BUILT_IN_TOOL_LABELS: Record<BuiltInToolKey, string> = {
-	webSearch: "Web Search",
-	urlRetrieval: "URL Retrieval",
-	deepResearch: "Deep Research",
-	codeExecution: "Code Sandbox",
-	imageGeneration: "Image Generation",
-	videoGeneration: "Video Generation",
+  codeExecution: "Code Execution",
+  deepResearch: "Deep Research",
+  imageGeneration: "Image Generation",
+  urlRetrieval: "URL Retrieval",
+  videoGeneration: "Video Generation",
+  webSearch: "Web Search",
 };
 
 const BUILT_IN_TOOL_HINTS: Record<BuiltInToolKey, string> = {
-	webSearch: "Search the web from chat",
-	urlRetrieval: "Fetch structured content from a specific URL",
-	deepResearch: "Run multi-step web research and generate reports",
-	codeExecution: "Execute code in a sandboxed environment",
-	imageGeneration: "Generate images inside chat",
-	videoGeneration: "Generate videos inside chat",
+  codeExecution: "Execute code in a sandboxed environment",
+  deepResearch: "Run multi-step web research and generate reports",
+  imageGeneration: "Generate images inside chat",
+  urlRetrieval: "Fetch structured content from a specific URL",
+  videoGeneration: "Generate videos inside chat",
+  webSearch: "Search the web from chat",
 };
 
-function isSupportedBuiltInTool(gateway: Gateway, key: BuiltInToolKey): boolean {
-	const gatewayToolDefaults = GATEWAY_MODEL_DEFAULTS[gateway].tools;
-
-	if (key === "imageGeneration") {
-		return (
-			typeof (gatewayToolDefaults.image as { default?: unknown }).default ===
-			"string"
-		);
-	}
-
-	if (key === "videoGeneration") {
-		return (
-			typeof (gatewayToolDefaults.video as { default?: unknown }).default ===
-			"string"
-		);
-	}
-
-	return true;
-}
+const BUILT_IN_TOOL_DEFAULTS: Readonly<Record<BuiltInToolKey, boolean>> = {
+  codeExecution: false,
+  deepResearch: false,
+  imageGeneration: false,
+  urlRetrieval: false,
+  videoGeneration: false,
+  webSearch: false,
+};
 
 const AUTH_LABELS: Record<AuthProvider, string> = {
-	google: "Google OAuth",
-	github: "GitHub OAuth",
-	vercel: "Vercel OAuth",
+  github: "GitHub OAuth",
+  google: "Google OAuth",
+  vercel: "Vercel OAuth",
 };
 
-function handleCancel(value: unknown): asserts value is never {
-	if (isCancel(value)) {
-		cancel("Operation cancelled.");
-		process.exit(1);
-	}
-}
+const PROMPT_CANCEL_EXIT_CODE = 1;
+const OBSERVABILITY_CANCEL_EXIT_CODE = 0;
 
-function toKebabCase(value: string | undefined): string {
-	return (value ?? "")
-		.trim()
-		.toLowerCase()
-		.replace(/[^a-z0-9-]/g, "-")
-		.replace(/-+/g, "-")
-		.replace(/^-|-$/g, "");
-}
+const handleCancel: <PromptValue>(
+  value: PromptValue
+) => asserts value is Exclude<PromptValue, symbol> = (value) => {
+  if (isCancel(value)) {
+    cancel("Operation cancelled.");
+    process.exit(PROMPT_CANCEL_EXIT_CODE);
+  }
+};
 
-function toSelectionRecord<T extends string>(
-	keys: readonly T[],
-	selected: readonly string[],
-): Record<T, boolean> {
-	return Object.fromEntries(
-		keys.map((key) => [key, selected.includes(key)]),
-	) as Record<T, boolean>;
-}
+const toKebabCase = (value: string | undefined): string =>
+  (value ?? "")
+    .trim()
+    .toLowerCase()
+    .replaceAll(/[^a-z0-9-]/gu, "-")
+    .replaceAll(/-+/gu, "-")
+    .replaceAll(/^-|-$/gu, "");
 
-export async function promptProjectName(
-	targetArg: string | undefined,
-	skipPrompt: boolean,
-): Promise<string> {
-	if (skipPrompt) {
-		return toKebabCase(targetArg ?? "my-chat-app") || "my-chat-app";
-	}
+const promptProjectName = async (
+  targetArg: string | undefined,
+  skipPrompt: boolean
+): Promise<string> => {
+  if (skipPrompt) {
+    return toKebabCase(targetArg ?? "my-chat-app") || "my-chat-app";
+  }
 
-	const name = await text({
-		message: "What is your project named?",
-		initialValue: targetArg ?? "my-chat-app",
-		validate: (value?: string) => {
-			const kebab = toKebabCase(value);
-			if (!kebab) return "Please enter a valid project name";
-		},
-	});
-	handleCancel(name);
+  const name = await text({
+    initialValue: targetArg ?? "my-chat-app",
+    message: "What is your project named?",
+    validate: (value?: string) => {
+      const kebab = toKebabCase(value);
+      if (!kebab) {
+        return "Please enter a valid project name";
+      }
+      return globalThis.undefined;
+    },
+  });
+  handleCancel(name);
 
-	return toKebabCase(name) || "my-chat-app";
-}
+  return toKebabCase(name) || "my-chat-app";
+};
+const promptGateway = async (skipPrompt: boolean): Promise<Gateway> => {
+  if (skipPrompt) {
+    return "vercel";
+  }
 
-export async function promptGateway(skipPrompt: boolean): Promise<Gateway> {
-	if (skipPrompt) return "vercel";
+  const gateway = await select({
+    initialValue: "vercel",
+    message: `Which ${highlighter.info("AI gateway")} would you like to use?`,
+    options: [
+      ...GATEWAYS.map((gw) => ({
+        hint: gatewayEnvRequirements[gw]
+          .map(
+            (requirement: Readonly<{ description: string }>) =>
+              requirement.description
+          )
+          .join("; "),
+        label: gw,
+        value: gw,
+      })),
+      {
+        hint: "URL or local JSON path",
+        label: "External registry item",
+        value: "__external__",
+      },
+    ],
+  });
+  handleCancel(gateway);
+  if (gateway === "__external__") {
+    const source = await text({
+      message: "Gateway registry item URL or local JSON path:",
+      validate: (value): "Enter a registry item address" | undefined => {
+        if (typeof value !== "string" || value.trim() === "") {
+          return "Enter a registry item address";
+        }
+        return undefined;
+      },
+    });
+    handleCancel(source);
+    return source.trim();
+  }
+  return gateway;
+};
+const APPEND_DELETE_COUNT = 0;
+const EMPTY_CONFIG_KEY_COUNT = 0;
 
-	const gateway = await select({
-		message: `Which ${highlighter.info("AI gateway")} would you like to use?`,
-		options: GATEWAYS.map((gw) => ({
-			value: gw,
-			label: gw,
-			hint: gatewayEnvRequirements[gw].description,
-		})),
-		initialValue: "vercel" as Gateway,
-	});
-	handleCancel(gateway);
+type StorageRequirementInput = ReadonlyInput<
+  ReturnType<typeof getStorageEnvironmentRequirements>[number]
+>;
 
-	return gateway;
-}
+const registryStorageRequirement = (
+  requirement: StorageRequirementInput
+): StorageSelection["definition"]["envRequirements"][number] => ({
+  description: requirement.description,
+  options: requirement.options.flatMap((option) => {
+    let alternatives: string[][] = [[]];
+    for (const variable of option) {
+      alternatives = alternatives.flatMap((alternative: readonly string[]) =>
+        [variable.key, ...variable.aliases].map((key) =>
+          alternative.toSpliced(alternative.length, APPEND_DELETE_COUNT, key)
+        )
+      );
+    }
+    return alternatives;
+  }),
+});
 
-export async function promptCoreFeatures(
-	skipPrompt: boolean,
-): Promise<Record<CoreFeatureKey, boolean>> {
-	if (skipPrompt) return { ...CORE_FEATURE_DEFAULTS };
+const promptStorage = async (
+  skipPrompt: boolean,
+  explicitProvider?: string,
+  explicitOptions?: string,
+  cwd = process.cwd()
+): Promise<StorageSelection> => {
+  let source = explicitProvider ?? "vercel-blob";
+  if (
+    !(typeof explicitProvider === "string" && explicitProvider !== "") &&
+    !skipPrompt
+  ) {
+    const choice = await select({
+      initialValue: "vercel-blob",
+      message: "Which file storage provider would you like to use?",
+      options: [
+        ...INSTALLABLE_STORAGE_PROVIDERS.map(
+          (
+            item: ReadonlyInput<(typeof INSTALLABLE_STORAGE_PROVIDERS)[number]>
+          ) => ({
+            label: item.title,
+            value: item.meta.chatjs.id,
+          })
+        ),
+        {
+          hint: "Namespace, URL or local JSON path",
+          label: "External registry item",
+          value: "__external__",
+        },
+      ],
+    });
+    handleCancel(choice);
+    source = choice;
+    if (source === "__external__") {
+      const address = await text({
+        message: "Storage registry item address:",
+        validate: (value): "Enter an item address" | undefined => {
+          if (typeof value !== "string" || value.trim() === "") {
+            return "Enter an item address";
+          }
+          return undefined;
+        },
+      });
+      handleCancel(address);
+      source = address.trim();
+    }
+  }
+  const selection = await resolveStorage(source, cwd);
+  const keys = selection.definition.configKeys;
+  let options = explicitOptions;
+  if (
+    options === globalThis.undefined &&
+    keys.length > EMPTY_CONFIG_KEY_COUNT
+  ) {
+    if (skipPrompt) {
+      throw new Error(
+        `Storage requires adapter options (${keys.join(", ")}). Pass --storage-config.`
+      );
+    }
+    const input = await text({
+      message: `Non-secret adapter options as JSON (${keys.join(", ")}). Credentials use environment variables.`,
+      validate: (value) => {
+        try {
+          parseStorageOptions(value ?? "");
+        } catch {
+          return "Enter a JSON object";
+        }
+        return globalThis.undefined;
+      },
+    });
+    handleCancel(input);
+    options = input;
+  }
+  selection.options =
+    options === globalThis.undefined ? {} : parseStorageOptions(options);
+  // Only the actual built-in address uses SDK-derived option/credential rules.
+  // An external item may use the same id with its own contract.
+  const builtin = INSTALLABLE_STORAGE_PROVIDERS.find(
+    (item: ReadonlyInput<(typeof INSTALLABLE_STORAGE_PROVIDERS)[number]>) =>
+      selection.source === `@chatjs/${item.name}`
+  );
+  const providerId = PROVIDER_NAMES.find(
+    (id) => id === (builtin && builtin.meta.chatjs.id)
+  );
+  if (providerId !== globalThis.undefined) {
+    selection.definition.envRequirements = getStorageEnvironmentRequirements(
+      providerId,
+      selection.options
+    ).map((requirement: StorageRequirementInput) =>
+      registryStorageRequirement(requirement)
+    );
+  }
+  return selection;
+};
 
-	const selected = await multiselect({
-		message: `Which ${highlighter.info("core features")} would you like to enable? ${highlighter.dim("(space to toggle, enter to submit)")}`,
-		options: CORE_FEATURE_KEYS.map((key) => ({
-			value: key,
-			label: CORE_FEATURE_LABELS[key],
-			hint:
-				key === "documents"
-					? "Create, edit, and review documents in chat"
-					: coreFeatureEnvRequirements[
-							key as keyof typeof coreFeatureEnvRequirements
-						]?.description,
-		})),
-		initialValues: CORE_FEATURE_KEYS.filter(
-			(key) => CORE_FEATURE_DEFAULTS[key],
-		),
-		required: false,
-	});
-	handleCancel(selected);
+const promptCoreFeatures = async (
+  skipPrompt: boolean,
+  mcp?: boolean,
+  projects?: boolean
+): Promise<Record<CoreFeatureKey, boolean>> => {
+  const CORE_FEATURE_DEFAULTS: Record<CoreFeatureKey, boolean> = {
+    attachments: false,
+    documents: true,
+    followupSuggestions: false,
+    feedback: false,
+    mcp: mcp ?? false,
+    projects: projects ?? false,
+    parallelResponses: FEATURES_DEFAULTS.parallelResponses,
+  };
 
-	return toSelectionRecord(CORE_FEATURE_KEYS, selected as CoreFeatureKey[]);
-}
+  if (skipPrompt) {
+    return { ...CORE_FEATURE_DEFAULTS };
+  }
 
-export async function promptDocumentTypes(
-	skipPrompt: boolean,
-	documentsEnabled: boolean,
-): Promise<Record<DocumentTypeKey, boolean>> {
-	if (!documentsEnabled) {
-		return toSelectionRecord(DOCUMENT_TYPE_KEYS, []);
-	}
+  const availableFeatures = CORE_FEATURE_KEYS.filter(
+    (key) =>
+      (key !== "mcp" || mcp === globalThis.undefined) &&
+      (key !== "projects" || projects === globalThis.undefined)
+  );
+  const selected = await multiselect({
+    initialValues: availableFeatures.filter(
+      (key) => CORE_FEATURE_DEFAULTS[key]
+    ),
+    message: `Which ${highlighter.info("core features")} would you like to enable? ${highlighter.dim("(space to toggle, enter to submit)")}`,
+    options: availableFeatures.map((key) => ({
+      hint:
+        key === "documents"
+          ? "Create, edit, and review documents in chat"
+          : coreFeatureEnvRequirements[key]
+              ?.map(
+                (requirement: Readonly<{ description: string }>) =>
+                  requirement.description
+              )
+              .join("; "),
+      label: CORE_FEATURE_LABELS[key],
+      value: key,
+    })),
+    required: false,
+  });
+  handleCancel(selected);
 
-	if (skipPrompt) return { ...DOCUMENT_TYPE_DEFAULTS };
+  return {
+    attachments: selected.includes("attachments"),
+    parallelResponses: selected.includes("parallelResponses"),
+    documents: selected.includes("documents"),
+    mcp: mcp ?? selected.includes("mcp"),
+    projects: projects ?? selected.includes("projects"),
+    feedback: selected.includes("feedback"),
+    followupSuggestions: selected.includes("followupSuggestions"),
+  };
+};
+const promptDocumentTypes = async (
+  skipPrompt: boolean,
+  documentsEnabled: boolean
+): Promise<Record<DocumentTypeKey, boolean>> => {
+  const DOCUMENT_TYPE_DEFAULTS: Record<DocumentTypeKey, boolean> = {
+    code: true,
+    sheet: true,
+    text: true,
+  };
 
-	const selected = await multiselect({
-		message: `Which ${highlighter.info("document types")} would you like to enable? ${highlighter.dim("(space to toggle, enter to submit)")}`,
-		options: DOCUMENT_TYPE_KEYS.map((key) => ({
-			value: key,
-			label: DOCUMENT_TYPE_LABELS[key],
-			hint: DOCUMENT_TYPE_HINTS[key],
-		})),
-		initialValues: DOCUMENT_TYPE_KEYS.filter(
-			(key) => DOCUMENT_TYPE_DEFAULTS[key],
-		),
-		required: false,
-	});
-	handleCancel(selected);
+  if (!documentsEnabled) {
+    return { text: false, code: false, sheet: false };
+  }
 
-	return toSelectionRecord(DOCUMENT_TYPE_KEYS, selected as DocumentTypeKey[]);
-}
+  if (skipPrompt) {
+    return { ...DOCUMENT_TYPE_DEFAULTS };
+  }
 
-export async function promptAssistantTools(
-	registryItems: RegistryIndexItem[],
-	skipPrompt: boolean,
-	gateway: Gateway,
+  const selected = await multiselect({
+    initialValues: DOCUMENT_TYPE_KEYS.filter(
+      (key) => DOCUMENT_TYPE_DEFAULTS[key]
+    ),
+    message: `Which ${highlighter.info("document types")} would you like to enable? ${highlighter.dim("(space to toggle, enter to submit)")}`,
+    options: DOCUMENT_TYPE_KEYS.map((key) => ({
+      hint: DOCUMENT_TYPE_HINTS[key],
+      label: DOCUMENT_TYPE_LABELS[key],
+      value: key,
+    })),
+    required: false,
+  });
+  handleCancel(selected);
+
+  return {
+    text: selected.includes("text"),
+    code: selected.includes("code"),
+    sheet: selected.includes("sheet"),
+  };
+};
+const isInstallableTool = (item: ReadonlyInput<RegistryIndexItem>): boolean => {
+  const { hidden } = item;
+  const slotMeta = hidden !== true && item.meta;
+  const slotChatjs = slotMeta !== false && slotMeta && slotMeta.chatjs;
+  const hasSlot =
+    hidden !== true &&
+    Boolean(slotChatjs !== false && slotChatjs && slotChatjs.slot);
+  if (hidden === true || hasSlot) {
+    return false;
+  }
+  const documentMeta = item.meta;
+  const documentChatjs = documentMeta && documentMeta.chatjs;
+  const hasDocumentRun = Boolean(
+    documentChatjs && documentChatjs.documentRunExport
+  );
+  return !hasDocumentRun && item.name !== "deep-research";
+};
+
+const assistantToolOptions = (
+  items: readonly ReadonlyInput<RegistryIndexItem>[],
+  supportedBuiltInTools: readonly BuiltInToolKey[]
+): Option<string>[] => [
+  ...supportedBuiltInTools.map((key) => ({
+    hint:
+      builtInToolEnvRequirements[key]?.description ?? BUILT_IN_TOOL_HINTS[key],
+    label: BUILT_IN_TOOL_LABELS[key],
+    value: key,
+  })),
+  ...items.map((item: ReadonlyInput<RegistryIndexItem>) => ({
+    hint: item.description,
+    label: item.name,
+    value: item.name,
+  })),
+];
+
+const supportedAssistantTools = (
+  gateway: ReadonlyInput<GatewayDefinition>
+): BuiltInToolKey[] =>
+  BUILT_IN_TOOL_KEYS.filter((key) => {
+    if (key === "imageGeneration") {
+      return (
+        gateway.capabilities.image && Boolean(gateway.defaults.roles.image)
+      );
+    }
+    if (key === "videoGeneration") {
+      return (
+        gateway.capabilities.video && Boolean(gateway.defaults.roles.video)
+      );
+    }
+    return true;
+  });
+
+const promptAssistantTools = async (
+  registryItems: readonly ReadonlyInput<RegistryIndexItem>[],
+  skipPrompt: boolean,
+  gateway: ReadonlyInput<GatewayDefinition>
 ): Promise<{
-	builtInTools: Record<BuiltInToolKey, boolean>;
-	installableTools: string[];
-}> {
-	const installableItems = registryItems.filter((item) => !item.hidden);
-	const supportedBuiltInTools = BUILT_IN_TOOL_KEYS.filter((key) =>
-		isSupportedBuiltInTool(gateway, key),
-	);
+  builtInTools: Record<BuiltInToolKey, boolean>;
+  installableTools: string[];
+}> => {
+  const installableItems = registryItems.filter((item) =>
+    isInstallableTool(item)
+  );
+  const supportedBuiltInTools = supportedAssistantTools(gateway);
 
-	if (skipPrompt) {
-		return {
-			builtInTools: { ...BUILT_IN_TOOL_DEFAULTS },
-			installableTools: [],
-		};
-	}
+  if (skipPrompt) {
+    return {
+      builtInTools: { ...BUILT_IN_TOOL_DEFAULTS },
+      installableTools: [],
+    };
+  }
 
-	const selected = await multiselect({
-		message: `Which ${highlighter.info("assistant tools")} would you like to enable? ${highlighter.dim("(space to toggle, enter to submit)")}`,
-		options: [
-			...supportedBuiltInTools.map((key) => ({
-				value: key,
-				label: BUILT_IN_TOOL_LABELS[key],
-				hint:
-					builtInToolEnvRequirements[
-						key as keyof typeof builtInToolEnvRequirements
-					]?.description ?? BUILT_IN_TOOL_HINTS[key],
-			})),
-			...installableItems.map((item) => ({
-				value: item.name,
-				label: item.name,
-				hint: item.description,
-			})),
-		],
-		initialValues: supportedBuiltInTools.filter(
-			(key) => BUILT_IN_TOOL_DEFAULTS[key],
-		),
-		required: false,
-	});
-	handleCancel(selected);
+  const selected = await multiselect({
+    initialValues: supportedBuiltInTools.filter(
+      (key) => BUILT_IN_TOOL_DEFAULTS[key]
+    ),
+    message: `Which ${highlighter.info("assistant tools")} would you like to enable? ${highlighter.dim("(space to toggle, enter to submit)")}`,
+    options: assistantToolOptions(installableItems, supportedBuiltInTools),
+    required: false,
+  });
+  handleCancel(selected);
 
-	const selectedValues = selected as string[];
-	const builtInTools = toSelectionRecord(
-		BUILT_IN_TOOL_KEYS,
-		selectedValues.filter((value): value is BuiltInToolKey =>
-			(BUILT_IN_TOOL_KEYS as readonly string[]).includes(value),
-		),
-	);
-	if (builtInTools.deepResearch) {
-		builtInTools.webSearch = true;
-	}
+  const builtInTools = {
+    webSearch: selected.includes("webSearch"),
+    urlRetrieval: selected.includes("urlRetrieval"),
+    deepResearch: selected.includes("deepResearch"),
+    codeExecution: selected.includes("codeExecution"),
+    imageGeneration: selected.includes("imageGeneration"),
+    videoGeneration: selected.includes("videoGeneration"),
+  };
+  if (builtInTools.deepResearch) {
+    builtInTools.webSearch = true;
+  }
 
-	return {
-		builtInTools,
-		installableTools: selectedValues.filter(
-			(value) => !(BUILT_IN_TOOL_KEYS as readonly string[]).includes(value),
-		),
-	};
-}
+  return {
+    builtInTools,
+    installableTools: selected.filter(
+      (value) => !(BUILT_IN_TOOL_KEYS as readonly string[]).includes(value)
+    ),
+  };
+};
+const promptAuth = async (
+  skipPrompt: boolean
+): Promise<Record<AuthProvider, boolean>> => {
+  if (skipPrompt) {
+    return { ...AUTH_DEFAULTS };
+  }
 
-export async function promptAuth(
-	skipPrompt: boolean,
-): Promise<Record<AuthProvider, boolean>> {
-	if (skipPrompt) return { ...AUTH_DEFAULTS };
+  const defaultProviders = AUTH_PROVIDERS.filter(
+    (provider) => AUTH_DEFAULTS[provider]
+  );
 
-	const defaultProviders = AUTH_PROVIDERS.filter((p) => AUTH_DEFAULTS[p]);
+  const selectedProviders = await multiselect({
+    initialValues: defaultProviders,
+    message: `Which ${highlighter.info("auth providers")} would you like to enable? ${highlighter.warn("(at least one required)")} ${highlighter.dim("(space to toggle, enter to submit)")}`,
+    options: AUTH_PROVIDERS.map((provider) => ({
+      hint: authEnvRequirements[provider].description,
+      label: AUTH_LABELS[provider],
+      value: provider,
+    })),
+    required: true,
+  });
+  handleCancel(selectedProviders);
 
-	let selectedProviders: AuthProvider[] = [];
+  return {
+    google: selectedProviders.includes("google"),
+    github: selectedProviders.includes("github"),
+    vercel: selectedProviders.includes("vercel"),
+  };
+};
 
-	while (selectedProviders.length === 0) {
-		const selected = await multiselect({
-			message: `Which ${highlighter.info("auth providers")} would you like to enable? ${highlighter.warn("(at least one required)")} ${highlighter.dim("(space to toggle, enter to submit)")}`,
-			options: AUTH_PROVIDERS.map((p) => ({
-				value: p,
-				label: AUTH_LABELS[p],
-				hint: authEnvRequirements[p].description,
-			})),
-			initialValues: defaultProviders,
-			required: false,
-		});
-		handleCancel(selected);
+const promptElectron = async (
+  skipPrompt: boolean,
+  explicitChoice?: boolean
+): Promise<boolean> => {
+  if (typeof explicitChoice === "boolean") {
+    return explicitChoice;
+  }
 
-		selectedProviders = selected as AuthProvider[];
-		if (selectedProviders.length === 0) {
-			logger.warn("At least one auth provider is required. Please select one.");
-		}
-	}
+  if (skipPrompt) {
+    return false;
+  }
 
-	return toSelectionRecord(AUTH_PROVIDERS, selectedProviders);
-}
+  const wantsElectron = await confirm({
+    initialValue: false,
+    message: `Include an ${highlighter.info("Electron")} desktop app?`,
+  });
+  handleCancel(wantsElectron);
 
-export async function promptElectron(
-	skipPrompt: boolean,
-	explicitChoice?: boolean,
-): Promise<boolean> {
-	if (typeof explicitChoice === "boolean") {
-		return explicitChoice;
-	}
-
-	if (skipPrompt) return false;
-
-	const wantsElectron = await confirm({
-		message: `Include an ${highlighter.info("Electron")} desktop app?`,
-		initialValue: false,
-	});
-	handleCancel(wantsElectron);
-
-	return wantsElectron;
-}
-
-export async function promptInstall(
-	packageManager: string,
-	skipPrompt: boolean,
-): Promise<boolean> {
-	if (skipPrompt) return true;
-
-	const install = await confirm({
-		message: `Install dependencies with ${highlighter.info(packageManager)}?`,
-		initialValue: true,
-	});
-	handleCancel(install);
-
-	return install;
-}
+  return wantsElectron;
+};
+const promptSearchTool = async (skipPrompt: boolean): Promise<string> => {
+  if (skipPrompt) {
+    return "tavily-search";
+  }
+  const choice = await select({
+    message: "Which web search tool should chat and deep research use?",
+    options: [
+      {
+        hint: "Requires TAVILY_API_KEY",
+        label: "Tavily",
+        value: "tavily-search",
+      },
+      {
+        hint: "Requires FIRECRAWL_API_KEY",
+        label: "Firecrawl",
+        value: "firecrawl-search",
+      },
+      { label: "External registry item", value: "external" },
+    ],
+  });
+  handleCancel(choice);
+  if (choice !== "external") {
+    return choice;
+  }
+  const address = await text({
+    message: "Search tool registry address:",
+    validate: (value): "Enter an address" | undefined => {
+      if (typeof value !== "string" || value.trim() === "") {
+        return "Enter an address";
+      }
+      return undefined;
+    },
+  });
+  handleCancel(address);
+  return address.trim();
+};
+const promptCodeExecutionTool = async (_skipPrompt: boolean): Promise<string> =>
+  await Promise.resolve("code-execution");
+const promptSandbox = async (
+  skipPrompt: boolean,
+  required: boolean,
+  persistent = false
+): Promise<string | undefined> => {
+  if (skipPrompt) {
+    if (required) {
+      throw new Error(
+        persistent
+          ? "Attachment uploads require a persistent sandbox. Pass --sandbox-provider vercel or a compatible external provider."
+          : "Code execution requires --sandbox-provider vercel or daytona."
+      );
+    }
+    return undefined;
+  }
+  const choice = await select({
+    message: persistent
+      ? "Uploads require persistent files. Which sandbox provider should the app use?"
+      : "Which sandbox provider should the app use?",
+    options: [
+      ...(required ? [] : [{ label: "None", value: "none" }]),
+      { label: "Vercel Sandbox", value: "vercel" },
+      ...(persistent ? [] : [{ label: "Daytona", value: "daytona" }]),
+    ],
+  });
+  handleCancel(choice);
+  return choice === "none" ? undefined : choice;
+};
+const promptUrlRetrievalTool = async (skipPrompt: boolean): Promise<string> => {
+  if (skipPrompt) {
+    return "retrieve-url";
+  }
+  const choice = await select({
+    message: "Which URL retrieval tool should chat use?",
+    options: [
+      {
+        hint: "Requires FIRECRAWL_API_KEY",
+        label: "Firecrawl",
+        value: "retrieve-url",
+      },
+      { label: "External registry item", value: "external" },
+    ],
+  });
+  handleCancel(choice);
+  if (choice !== "external") {
+    return choice;
+  }
+  const address = await text({
+    message: "URL retrieval tool registry address:",
+    validate: (value): "Enter an address" | undefined => {
+      if (typeof value !== "string" || value.trim() === "") {
+        return "Enter an address";
+      }
+      return undefined;
+    },
+  });
+  handleCancel(address);
+  return address.trim();
+};
+const promptImageGenerationTool = async (
+  skipPrompt: boolean
+): Promise<string> => {
+  if (skipPrompt) {
+    return "generate-image";
+  }
+  const choice = await select({
+    message: "Which image generation tool should chat use?",
+    options: [
+      {
+        hint: "Uses your gateway and file storage",
+        label: "Selected AI gateway",
+        value: "generate-image",
+      },
+      { label: "External registry item", value: "external" },
+    ],
+  });
+  handleCancel(choice);
+  if (choice !== "external") {
+    return choice;
+  }
+  const address = await text({
+    message: "image generation tool registry address:",
+    validate: (value): "Enter an address" | undefined => {
+      if (typeof value !== "string" || value.trim() === "") {
+        return "Enter an address";
+      }
+      return undefined;
+    },
+  });
+  handleCancel(address);
+  return address.trim();
+};
+const promptVideoGenerationTool = async (
+  skipPrompt: boolean
+): Promise<string> => {
+  if (skipPrompt) {
+    return "generate-video";
+  }
+  const choice = await select({
+    message: "Which video generation tool should chat use?",
+    options: [
+      {
+        hint: "Uses your gateway and file storage",
+        label: "Selected AI gateway",
+        value: "generate-video",
+      },
+      { label: "External registry item", value: "external" },
+    ],
+  });
+  handleCancel(choice);
+  if (choice !== "external") {
+    return choice;
+  }
+  const address = await text({
+    message: "video generation tool registry address:",
+    validate: (value): "Enter an address" | undefined => {
+      if (typeof value !== "string" || value.trim() === "") {
+        return "Enter an address";
+      }
+      return undefined;
+    },
+  });
+  handleCancel(address);
+  return address.trim();
+};
+// One optional group; new applications never enable telemetry by default.
+const promptObservability = async (yes: boolean): Promise<string[]> => {
+  if (yes) {
+    return [];
+  }
+  const result = await multiselect({
+    initialValues: [],
+    message: "Optional observability integrations",
+    options: [
+      { label: "Vercel Analytics", value: "vercel-analytics" },
+      { label: "Vercel Speed Insights", value: "vercel-speed-insights" },
+      { label: "Langfuse", value: "langfuse" },
+    ],
+    required: false,
+  });
+  if (isCancel(result)) {
+    cancel("Operation cancelled.");
+    process.exit(OBSERVABILITY_CANCEL_EXIT_CODE);
+  }
+  return result;
+};
+export {
+  promptAssistantTools,
+  promptAuth,
+  promptCodeExecutionTool,
+  promptSandbox,
+  promptCoreFeatures,
+  promptDocumentTypes,
+  promptElectron,
+  promptGateway,
+  promptImageGenerationTool,
+  promptObservability,
+  promptProjectName,
+  promptSearchTool,
+  promptStorage,
+  promptUrlRetrievalTool,
+  promptVideoGenerationTool,
+};

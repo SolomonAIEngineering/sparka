@@ -1,29 +1,54 @@
+"use client";
+
+import Image from "next/image";
+import { useState } from "react";
 import type React from "react";
+
 import { cn } from "@/lib/utils";
 
-export function Favicon({
+const FaviconImage = ({
   url,
+  alt,
   className,
-  ...props
+  fallback = null,
+  style,
+  referrerPolicy,
 }: {
-  url: string;
-  className?: string;
-} & React.ImgHTMLAttributes<HTMLImageElement>) {
+  readonly url: string;
+  readonly alt?: string;
+  readonly className?: string;
+  readonly fallback?: React.ReactNode;
+  readonly style?: React.CSSProperties;
+  readonly referrerPolicy?: React.HTMLAttributeReferrerPolicy;
+}): React.ReactNode => {
+  const [failed, setFailed] = useState(false);
+
+  if (url === "" || failed) {
+    return fallback;
+  }
+
   return (
-    // biome-ignore lint/performance/noImgElement: Next/Image isn't ideal for tiny favicons here
-    // biome-ignore lint/a11y/noNoninteractiveElementInteractions: onError is necessary for fallback handling
-    <img
+    <Image
+      alt={alt ?? `Favicon for ${url}`}
       className={cn("h-4 w-4", className)}
       height={16}
-      src={url}
-      width={16}
-      {...props}
-      alt={`Favicon for ${url}`}
-      onError={(e) => {
-        const target = e.target as HTMLImageElement;
-        target.style.display = "none";
-        target.nextElementSibling?.classList.remove("hidden");
+      loading="eager"
+      onError={() => {
+        setFailed(true);
       }}
+      referrerPolicy={referrerPolicy}
+      src={url}
+      style={style}
+      // Favicons are tiny and can come from arbitrary search-result domains.
+      unoptimized
+      width={16}
     />
   );
-}
+};
+
+export const Favicon = ({
+  url,
+  ...props
+}: React.ComponentProps<typeof FaviconImage>): React.JSX.Element => (
+  <FaviconImage key={url} url={url} {...props} />
+);

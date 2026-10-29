@@ -1,185 +1,280 @@
-import { z } from "zod";
+import type { AuthProvider, CoreFeatureKey, Gateway } from "#cli/types";
 import {
   applyDefaults,
   configDescriptionSchema,
-  type ConfigInput,
 } from "../../../../apps/chat/lib/config-schema";
-import { GATEWAY_MODEL_DEFAULTS } from "../../../../apps/chat/lib/ai/gateway-model-defaults";
-import type {
-  AuthProvider,
-  BuiltInToolKey,
-  CoreFeatureKey,
-  DocumentTypeKey,
-  Gateway,
-} from "../types";
+import type { GatewayDefinition } from "@chat-js/gateways/definition";
+import type { ReadonlyInput } from "./readonly-input";
+import { builtInGateways } from "#cli/registry/gateways";
+import { z } from "zod";
 
-function extractDescriptions(
-  schema: z.ZodType,
-  prefix = "",
-  result: Map<string, string> = new Map(),
-): Map<string, string> {
-  if (schema.description && prefix) {
-    result.set(prefix, schema.description);
+const defaultsFor = (
+  input: ReadonlyInput<{
+    gateway: string;
+    gatewayDefaults?: GatewayDefinition["defaults"];
+  }>
+): ReadonlyInput<GatewayDefinition["defaults"]> => {
+  if (input.gatewayDefaults) {
+    return input.gatewayDefaults;
   }
+  const gateway = builtInGateways.find(
+    (item: ReadonlyInput<(typeof builtInGateways)[number]>): boolean =>
+      item.meta.chatjs.id === input.gateway
+  );
+  if (!gateway) {
+    throw new Error(`Missing registry defaults for gateway ${input.gateway}`);
+  }
+  return gateway.meta.chatjs.defaults;
+};
 
-  if (schema instanceof z.ZodObject) {
-    const shape = schema.shape;
-    for (const [key, propSchema] of Object.entries(shape)) {
-      const path = prefix ? `${prefix}.${key}` : key;
-      extractDescriptions(propSchema as z.ZodType, path, result);
+const configPropertyPath = (prefix: string, key: string): string => {
+  if (prefix === "") {
+    return key;
+  }
+  return `${prefix}.${key}`;
+};
+
+const extractDescriptions = (schema: unknown): ReadonlyMap<string, string> => {
+  const result = new Map<string, string>();
+  const visit = (node: unknown, prefix: string): void => {
+    if (!(node instanceof z.ZodType)) {
+      return;
     }
-  }
-
-  if (schema instanceof z.ZodDiscriminatedUnion) {
-    for (const option of schema.options.values()) {
-      extractDescriptions(option, prefix, result);
+    if (
+      typeof node.description === "string" &&
+      node.description !== "" &&
+      prefix !== ""
+    ) {
+      result.set(prefix, node.description);
     }
-  }
 
+    if (node instanceof z.ZodObject) {
+      for (const [key, property] of Object.entries(node.shape)) {
+        visit(property, configPropertyPath(prefix, key));
+      }
+    }
+    if (node instanceof z.ZodDiscriminatedUnion) {
+      for (const option of node.options.values()) {
+        visit(option, prefix);
+      }
+    }
+  };
+  visit(schema, "");
   return result;
-}
+};
 
 const descriptions = extractDescriptions(configDescriptionSchema);
 
-const VALID_KEY_REGEX = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/;
+const INTEGER_SEPARATOR_THRESHOLD = 10_000;
+const INDENTATION_STEP = 1;
+const EMPTY_COLLECTION_LENGTH = 0;
 
-const formatKey = (key: string) =>
-  VALID_KEY_REGEX.test(key) ? key : JSON.stringify(key);
+const VALID_KEY_REGEX = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/u;
 
-function formatValue(value: unknown, indent: number): string {
-  const spaces = "  ".repeat(indent);
-  const inner = "  ".repeat(indent + 1);
+const formatKey = (key: string): string => {
+  if (VALID_KEY_REGEX.test(key)) {
+    return key;
+  }
+  return JSON.stringify(key);
+};
 
-  if (value === null || value === undefined) return "undefined";
-  if (typeof value === "string") return JSON.stringify(value);
-  if (typeof value === "number" || typeof value === "boolean") {
+const compareEntryKeys = (
+  [left]: readonly [string, unknown],
+  [right]: readonly [string, unknown]
+): number => left.localeCompare(right);
+
+const formatSymbol = (value: symbol): string => {
+  const { description = "" } = value;
+  if (description === "") {
+    return "Symbol()";
+  }
+  return `Symbol(${description})`;
+};
+
+const formatNumber = (value: number): string => {
+  if (
+    Number.isSafeInteger(value) &&
+    Math.abs(value) >= INTEGER_SEPARATOR_THRESHOLD
+  ) {
+    return String(value).replaceAll(/\d(?=(?:\d{3})+$)/gu, "$&_");
+  }
+  return String(value);
+};
+
+const formatOtherPrimitive = (value: unknown): string => {
+  if (typeof value === "symbol") {
+    return formatSymbol(value);
+  }
+  if (typeof value === "function" || typeof value === "bigint") {
+    return value.toString();
+  }
+  return "undefined";
+};
+
+const formatPrimitive = (value: unknown): string => {
+  if (typeof value === "string") {
+    return JSON.stringify(value);
+  }
+  if (typeof value === "number") {
+    return formatNumber(value);
+  }
+  if (typeof value === "boolean") {
     return String(value);
   }
+  return formatOtherPrimitive(value);
+};
 
-  if (Array.isArray(value)) {
-    if (value.length === 0) return "[]";
-    if (value.every((v) => typeof v === "string")) {
-      return `[${value.map((v) => JSON.stringify(v)).join(", ")}]`;
-    }
-    return `[\n${value
-      .map((v) => `${inner}${formatValue(v, indent + 1)}`)
-      .join(",\n")}\n${spaces}]`;
-  }
-
-  if (typeof value === "object") {
-    const entries = Object.entries(value);
-    if (entries.length === 0) return "{}";
-    return `{\n${entries
-      .map(
-        ([k, v]) => `${inner}${formatKey(k)}: ${formatValue(v, indent + 1)}`
-      )
-      .join(",\n")},\n${spaces}}`;
-  }
-
-  return String(value);
+interface FormatIndentation {
+  readonly indent: number;
+  readonly spaces: string;
+  readonly inner: string;
 }
 
-function generateConfig(
-  obj: Record<string, unknown>,
+const formatArray = (
+  values: readonly unknown[],
+  indentation: FormatIndentation,
+  serialize: (value: unknown, indent: number) => string
+): string => {
+  if (values.length === EMPTY_COLLECTION_LENGTH) {
+    return "[]";
+  }
+  if (values.every((entry) => typeof entry === "string")) {
+    return `[${values.map((entry): string => JSON.stringify(entry)).join(", ")}]`;
+  }
+  return `[\n${values
+    .map(
+      (entry): string =>
+        `${indentation.inner}${serialize(entry, indentation.indent + INDENTATION_STEP)}`
+    )
+    .join(",\n")}\n${indentation.spaces}]`;
+};
+
+const formatObject = (
+  value: object,
+  indentation: FormatIndentation,
+  serialize: (value: unknown, indent: number) => string
+): string => {
+  const entries = Object.entries(value).toSorted(compareEntryKeys);
+  if (entries.length === EMPTY_COLLECTION_LENGTH) {
+    return "{}";
+  }
+  return `{\n${entries
+    .map(
+      ([key, entry]: readonly [string, unknown]): string =>
+        `${indentation.inner}${formatKey(key)}: ${serialize(entry, indentation.indent + INDENTATION_STEP)}`
+    )
+    .join(",\n")},\n${indentation.spaces}}`;
+};
+
+const formatValue = (value: unknown, indent: number): string => {
+  const spaces = "  ".repeat(indent);
+  const inner = "  ".repeat(indent + INDENTATION_STEP);
+  if (value === null || typeof value !== "object") {
+    return formatPrimitive(value);
+  }
+  if (Array.isArray(value)) {
+    return formatArray(value, { indent, inner, spaces }, formatValue);
+  }
+  return formatObject(value, { indent, inner, spaces }, formatValue);
+};
+
+const generateConfig = (
+  obj: object,
   indent: number,
   pathPrefix: string
-): string {
+): string => {
   const spaces = "  ".repeat(indent);
 
   return Object.entries(obj)
-    .map(([key, value]) => {
-      const path = pathPrefix ? `${pathPrefix}.${key}` : key;
+    .toSorted(compareEntryKeys)
+    .map(([key, value]: readonly [string, unknown]): string => {
+      const path = configPropertyPath(pathPrefix, key);
       const desc = descriptions.get(path);
-      const comment = desc ? ` // ${desc}` : "";
+      let comment = "";
+      if (typeof desc === "string" && desc !== "") {
+        comment = `${spaces}// ${desc}\n`;
+      }
 
       if (
         typeof value === "object" &&
         value !== null &&
         !Array.isArray(value)
       ) {
-        const nested = generateConfig(
-          value as Record<string, unknown>,
-          indent + 1,
-          path
-        );
-        return `${spaces}${formatKey(key)}: {\n${nested}\n${spaces}},${comment}`;
+        const nested = generateConfig(value, indent + INDENTATION_STEP, path);
+        return `${comment}${spaces}${formatKey(key)}: {\n${nested}\n${spaces}},`;
       }
 
-      return `${spaces}${formatKey(key)}: ${formatValue(
-        value,
-        indent
-      )},${comment}`;
+      return `${comment}${spaces}${formatKey(key)}: ${formatValue(value, indent)},`;
     })
     .join("\n");
-}
+};
 
-function toConfigInput(input: {
+const toConfigInput = (
+  input: ReadonlyInput<{
+    appName: string;
+    appPrefix: string;
+    appUrl: string;
+    gateway: Gateway;
+    gatewayDefaults?: GatewayDefinition["defaults"];
+    coreFeatures: Record<CoreFeatureKey, boolean>;
+    auth: Record<AuthProvider, boolean>;
+  }>
+): {
+  ai: {
+    gateway: Gateway;
+    tools: { followupSuggestions: { enabled: boolean } };
+  };
   appName: string;
   appPrefix: string;
   appUrl: string;
-  withElectron: boolean;
-  gateway: Gateway;
-  coreFeatures: Record<CoreFeatureKey, boolean>;
-  documentTypes: Record<DocumentTypeKey, boolean>;
-  builtInTools: Record<BuiltInToolKey, boolean>;
-  auth: Record<AuthProvider, boolean>;
-}): ConfigInput {
-  const gatewayToolDefaults = GATEWAY_MODEL_DEFAULTS[input.gateway].tools;
-  const hasImageDefault =
-    typeof (gatewayToolDefaults.image as { default?: unknown }).default ===
-    "string";
-  const hasVideoDefault =
-    typeof (gatewayToolDefaults.video as { default?: unknown }).default ===
-    "string";
+  authentication: Readonly<Record<AuthProvider, boolean>>;
+  features: { parallelResponses: boolean };
+} => ({
+  ai: {
+    gateway: input.gateway,
+    tools: {
+      followupSuggestions: {
+        enabled: input.coreFeatures.followupSuggestions,
+      },
+    },
+  },
+  appName: input.appName,
+  appPrefix: input.appPrefix,
+  appUrl: input.appUrl,
+  authentication: input.auth,
+  features: {
+    parallelResponses: input.coreFeatures.parallelResponses,
+  },
+});
 
-  return {
-    appName: input.appName,
-    appPrefix: input.appPrefix,
-    appUrl: input.appUrl,
-    features: {
-      attachments: input.coreFeatures.attachments,
-      parallelResponses: input.coreFeatures.parallelResponses,
-    },
-    authentication: input.auth,
-    desktopApp: {
-      enabled: input.withElectron,
-    },
+export const buildConfigTs = (
+  input: ReadonlyInput<{
+    appName: string;
+    appPrefix: string;
+    appUrl: string;
+    gateway: Gateway;
+    gatewayDefaults?: GatewayDefinition["defaults"];
+    coreFeatures: Record<CoreFeatureKey, boolean>;
+    auth: Record<AuthProvider, boolean>;
+  }>
+): string => {
+  const partial = toConfigInput(input);
+  const { ai, ...appConfig } = partial;
+  const defaults = defaultsFor(input);
+  const { roles, ...gatewayDefaults } = defaults;
+  const fullConfig = {
+    ...applyDefaults(appConfig),
     ai: {
-      gateway: input.gateway,
+      ...gatewayDefaults,
+      ...ai,
       tools: {
-        mcp: { enabled: input.coreFeatures.mcp },
-        followupSuggestions: { enabled: input.coreFeatures.followupSuggestions },
-        documents: {
-          enabled: input.coreFeatures.documents,
-          types: input.documentTypes,
-        },
-        webSearch: { enabled: input.builtInTools.webSearch },
-        urlRetrieval: { enabled: input.builtInTools.urlRetrieval },
-        deepResearch: { enabled: input.builtInTools.deepResearch },
-        codeExecution: { enabled: input.builtInTools.codeExecution },
-        image: {
-          enabled: input.builtInTools.imageGeneration && hasImageDefault,
-        },
-        video: {
-          enabled: input.builtInTools.videoGeneration && hasVideoDefault,
+        followupSuggestions: {
+          default: roles.fast,
+          ...ai.tools.followupSuggestions,
         },
       },
     },
-  } as ConfigInput;
-}
-
-export function buildConfigTs(input: {
-  appName: string;
-  appPrefix: string;
-  appUrl: string;
-  withElectron: boolean;
-  gateway: Gateway;
-  coreFeatures: Record<CoreFeatureKey, boolean>;
-  documentTypes: Record<DocumentTypeKey, boolean>;
-  builtInTools: Record<BuiltInToolKey, boolean>;
-  auth: Record<AuthProvider, boolean>;
-}): string {
-  const fullConfig = applyDefaults(toConfigInput(input));
+  };
 
   return `import { defineConfig } from "@/lib/config-schema";
 
@@ -190,9 +285,9 @@ export function buildConfigTs(input: {
  * @see https://chatjs.dev/docs/reference/config
  */
 const config = defineConfig({
-${generateConfig(fullConfig, 1, "")}
+${generateConfig(fullConfig, INDENTATION_STEP, "")}
 });
 
 export default config;
 `;
-}
+};

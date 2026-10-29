@@ -1,6 +1,11 @@
-export const dynamic = "force-dynamic";
-export const fetchCache = "force-no-store";
+import React, { Suspense } from "react";
 
-export default function HomePage() {
-  return null;
-}
+import { ChatLoadingShell } from "@/components/chat-loading-shell";
+import { EveChatPage } from "@/components/eve/eve-chat-page";
+
+const HomePage = (): React.JSX.Element => (
+  <Suspense fallback={<ChatLoadingShell />}>
+    <EveChatPage />
+  </Suspense>
+);
+export default HomePage;

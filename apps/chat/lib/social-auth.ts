@@ -1,42 +1,44 @@
-import {
-  AUTHENTICATION_DEFAULTS,
-  type AuthenticationConfig,
-} from "./config-schema";
+import type { AuthenticationConfig } from "./config-schema";
 
-export type SocialAuthSignInOptions = {
+interface SocialAuthSignInOptions {
   disableRedirect?: boolean;
   errorCallbackURL?: string;
   newUserCallbackURL?: string;
+}
+
+type SocialAuthProvider = keyof AuthenticationConfig;
+
+// Keep the sign-in buttons in product order, independent of config key order.
+const SOCIAL_AUTH_PROVIDER_ORDER: Record<SocialAuthProvider, number> = {
+  github: 1,
+  google: 0,
+  vercel: 2,
 };
 
-export type SocialAuthProvider = keyof AuthenticationConfig;
+const isSocialAuthProvider = (
+  value?: string | null
+): value is SocialAuthProvider =>
+  typeof value === "string" && Object.hasOwn(SOCIAL_AUTH_PROVIDER_ORDER, value);
 
-const SOCIAL_AUTH_PROVIDER_IDS = Object.keys(
-  AUTHENTICATION_DEFAULTS
-) as SocialAuthProvider[];
-
-const SOCIAL_AUTH_PROVIDER_ID_SET = new Set<string>(SOCIAL_AUTH_PROVIDER_IDS);
-
-export function isSocialAuthProvider(
-  value: string | null | undefined
-): value is SocialAuthProvider {
-  return typeof value === "string" && SOCIAL_AUTH_PROVIDER_ID_SET.has(value);
-}
-
-export function getEnabledSocialAuthProviders(
-  authentication: AuthenticationConfig
-): SocialAuthProvider[] {
-  return SOCIAL_AUTH_PROVIDER_IDS.filter(
-    (provider) => authentication[provider]
+const SOCIAL_AUTH_PROVIDER_IDS = Object.keys(SOCIAL_AUTH_PROVIDER_ORDER)
+  .filter((provider) => isSocialAuthProvider(provider))
+  .toSorted(
+    (leftProvider, rightProvider) =>
+      SOCIAL_AUTH_PROVIDER_ORDER[leftProvider] -
+      SOCIAL_AUTH_PROVIDER_ORDER[rightProvider]
   );
-}
 
-export function sortSocialAuthProvidersByLastUsed<
+const getEnabledSocialAuthProviders = (
+  authentication: AuthenticationConfig
+): SocialAuthProvider[] =>
+  SOCIAL_AUTH_PROVIDER_IDS.filter((provider) => authentication[provider]);
+
+const sortSocialAuthProvidersByLastUsed = <
   TProvider extends { id: SocialAuthProvider },
 >(
   providers: readonly TProvider[],
   lastUsedProvider: string | null | undefined
-): TProvider[] {
+): TProvider[] => {
   if (!isSocialAuthProvider(lastUsedProvider)) {
     return [...providers];
   }
@@ -45,4 +47,11 @@ export function sortSocialAuthProvidersByLastUsed<
     ...providers.filter(({ id }) => id === lastUsedProvider),
     ...providers.filter(({ id }) => id !== lastUsedProvider),
   ];
-}
+};
+
+export {
+  isSocialAuthProvider,
+  getEnabledSocialAuthProviders,
+  sortSocialAuthProvidersByLastUsed,
+};
+export type { SocialAuthSignInOptions, SocialAuthProvider };

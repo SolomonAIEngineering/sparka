@@ -1,30 +1,30 @@
-import type { Metadata } from "next";
-
+import { siteConfig, siteLinks } from "@/lib/site-config";
 import { Faq } from "@/components/faq";
 import { Features } from "@/components/features";
 import { Footer } from "@/components/footer";
 import { GetStarted } from "@/components/get-started";
 import { Hero } from "@/components/hero";
 import { LogoCloud } from "@/components/logo-cloud";
+import type { Metadata } from "next";
 import { Navbar } from "@/components/navbar";
 import { Platforms } from "@/components/platforms";
+import React from "react";
 import { TechStack } from "@/components/tech-stack";
 import { UseCases } from "@/components/use-cases";
-import { siteConfig, siteLinks } from "@/lib/site-config";
 
-export const metadata: Metadata = {
-  title: "The Prod-Ready AI Chat App",
-  description:
-    "Stop rebuilding the same AI chat infrastructure. ChatJS gives you a production-ready foundation with auth, streaming, tool calling, and 120+ models.",
+const metadata: Metadata = {
   alternates: {
     canonical: siteLinks.home,
   },
+  description:
+    "Stop rebuilding the same AI chat infrastructure. ChatJS gives you a production-ready foundation with auth, streaming, tool calling, and 120+ models.",
   openGraph: {
-    url: siteLinks.home,
-    title: "ChatJS - Stop Rebuilding the Same AI Chat Infrastructure",
     description:
       "A production-ready foundation with auth, streaming, tool calling, and 120+ models. Scaffold it, customize it, ship it.",
+    title: "ChatJS - Stop Rebuilding the Same AI Chat Infrastructure",
+    url: siteLinks.home,
   },
+  title: "The Prod-Ready AI Chat App",
 };
 
 const structuredData = {
@@ -32,55 +32,54 @@ const structuredData = {
   "@graph": [
     {
       "@type": "SoftwareApplication",
-      name: siteConfig.name,
       applicationCategory: "DeveloperApplication",
-      operatingSystem: "Web, macOS, Windows, Linux",
-      url: siteLinks.home,
+      codeRepository: siteLinks.github,
       description: siteConfig.description,
       image: `${siteConfig.url}${siteConfig.ogImage}`,
+      name: siteConfig.name,
       offers: {
         "@type": "Offer",
         price: "0",
         priceCurrency: "USD",
       },
-      softwareHelp: siteLinks.docs,
-      codeRepository: siteLinks.github,
+      operatingSystem: "Web, macOS, Windows, Linux",
       screenshot: `${siteConfig.url}${siteConfig.ogImage}`,
+      softwareHelp: siteLinks.docs,
+      url: siteLinks.home,
     },
     {
       "@type": "Organization",
-      name: siteConfig.name,
-      url: siteLinks.home,
       logo: `${siteConfig.url}/logo.svg`,
+      name: siteConfig.name,
       sameAs: [siteLinks.github],
+      url: siteLinks.home,
     },
     {
       "@type": "WebSite",
+      description: siteConfig.description,
       name: siteConfig.name,
       url: siteLinks.home,
-      description: siteConfig.description,
     },
   ],
 };
 
-export default function HomePage() {
-  return (
-    <div className="flex min-h-screen flex-col">
-      <script type="application/ld+json">
-        {JSON.stringify(structuredData)}
-      </script>
-      <Navbar />
-      <main className="flex-1">
-        <Hero />
-        <LogoCloud />
-        <Features />
-        <TechStack />
-        <Platforms />
-        <UseCases />
-        <Faq />
-        <GetStarted />
-      </main>
-      <Footer />
-    </div>
-  );
-}
+const HomePage = (): React.JSX.Element => (
+  <div className="flex min-h-screen flex-col">
+    <script type="application/ld+json">{JSON.stringify(structuredData)}</script>
+    <Navbar />
+    <main className="flex-1">
+      <Hero />
+      <LogoCloud />
+      <Features />
+      <TechStack />
+      <Platforms />
+      <UseCases />
+      <Faq />
+      <GetStarted />
+    </main>
+    <Footer />
+  </div>
+);
+
+export { metadata };
+export default HomePage;

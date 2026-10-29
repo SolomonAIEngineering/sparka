@@ -1,45 +1,40 @@
-import type { generatedForGateway, models } from "../models.generated";
-import type { GatewayProvider as GatewayProviderBase } from "./gateway-provider";
-import { OpenAICompatibleGateway } from "./openai-compatible-gateway";
-import { OpenAIGateway } from "./openai-gateway";
-import { OpenRouterGateway } from "./openrouter-gateway";
-import { VercelGateway } from "./vercel-gateway";
+import type { generatedForGateway, models } from "@/lib/ai/models.generated";
+import type { Gateway } from "@/lib/ai/gateway";
+import type { GatewayProvider as GatewayProviderBase } from "@chat-js/gateways/gateway-provider";
+import type {
+  ConfigMediaModelId,
+  StrictLiterals,
+} from "@chat-js/gateways/provider-types";
+import type { gatewayType } from "@/lib/ai/gateway-model-defaults";
 
-export const gatewayRegistry = {
-  vercel: () => new VercelGateway(),
-  openrouter: () => new OpenRouterGateway(),
-  openai: () => new OpenAIGateway(),
-  "openai-compatible": () => new OpenAICompatibleGateway(),
-} as const satisfies Record<string, () => GatewayProviderBase>;
+type InstalledGateway = InstanceType<typeof Gateway>;
 
-export type GatewayProvider = GatewayProviderBase<GatewayType>;
-export type GatewayType = keyof typeof gatewayRegistry;
+type GatewayType = typeof gatewayType;
 
-/** Single source of truth for the default gateway */
-export const DEFAULT_GATEWAY = "vercel" as const satisfies GatewayType;
-export type DefaultGateway = typeof DEFAULT_GATEWAY;
-/** Infer model ID type from a gateway's `createLanguageModel` parameter */
-type InferLanguageModelId<T extends GatewayType> = Parameters<
-  ReturnType<(typeof gatewayRegistry)[T]>["createLanguageModel"]
->[0];
+const MODEL_ID_PARAMETER_INDEX = 0;
 
-export type GatewayModelIdMap = {
-  [K in GatewayType]: InferLanguageModelId<K>;
-};
+type GatewayProvider = GatewayProviderBase<GatewayType>;
 
-/** Infer image model ID type from a gateway's `createImageModel` parameter */
-type InferImageModelId<T extends GatewayType> = Parameters<
-  ReturnType<(typeof gatewayRegistry)[T]>["createImageModel"]
->[0];
-
-// Helper: check if tuple T contains element E
-type TupleIncludes<T extends readonly unknown[], E> = T extends readonly [
-  infer H,
-  ...infer R,
+// Runtime SDK factories accept new provider IDs. Configuration keeps curated
+// literal suggestions where the SDK supplies them; open adapters keep strings.
+type RuntimeLanguageModelId = Parameters<
+  InstalledGateway["createLanguageModel"]
+>[typeof MODEL_ID_PARAMETER_INDEX];
+type ConfigLanguageModelId = [StrictLiterals<RuntimeLanguageModelId>] extends [
+  never,
 ]
-  ? H extends E
+  ? RuntimeLanguageModelId
+  : StrictLiterals<RuntimeLanguageModelId>;
+type GatewayModelIdMap = Record<GatewayType, ConfigLanguageModelId>;
+
+// Helper: check whether a model tag tuple contains the requested tag.
+type TupleIncludes<
+  Tags extends readonly unknown[],
+  Tag,
+> = Tags extends readonly [infer FirstTag, ...infer RemainingTags]
+  ? FirstTag extends Tag
     ? true
-    : TupleIncludes<R, E>
+    : TupleIncludes<RemainingTags, Tag>
   : false;
 
 // Extract language models with "image-generation" tag from the snapshot
@@ -47,25 +42,30 @@ type MultimodalImageModel =
   Extract<
     (typeof models)[number],
     { type: "language"; tags: readonly string[] }
-  > extends infer M
-    ? M extends { id: infer Id; tags: infer Tags extends readonly string[] }
+  > extends infer Model
+    ? Model extends { id: infer Id; tags: infer Tags extends readonly string[] }
       ? TupleIncludes<Tags, "image-generation"> extends true
         ? Id
         : never
       : never
     : never;
 
-export type GatewayImageModelIdMap = {
-  [K in GatewayType]:
-    | InferImageModelId<K>
-    | (K extends typeof generatedForGateway ? MultimodalImageModel : never);
+type GatewayImageModelIdMap = {
+  [SelectedGateway in GatewayType]:
+    | ConfigMediaModelId<InstalledGateway["createImageModel"]>
+    | (SelectedGateway extends typeof generatedForGateway
+        ? MultimodalImageModel
+        : never);
 };
 
-/** Infer video model ID type from a gateway's `createVideoModel` parameter */
-type InferVideoModelId<T extends GatewayType> = Parameters<
-  ReturnType<(typeof gatewayRegistry)[T]>["createVideoModel"]
->[0];
-
-export type GatewayVideoModelIdMap = {
-  [K in GatewayType]: InferVideoModelId<K>;
+type GatewayVideoModelIdMap = Record<
+  GatewayType,
+  ConfigMediaModelId<InstalledGateway["createVideoModel"]>
+>;
+export type {
+  GatewayImageModelIdMap,
+  GatewayModelIdMap,
+  GatewayProvider,
+  GatewayType,
+  GatewayVideoModelIdMap,
 };

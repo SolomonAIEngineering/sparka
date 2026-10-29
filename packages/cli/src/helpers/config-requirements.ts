@@ -1,118 +1,111 @@
-import type {
-	AuthProvider,
-	BuiltInToolKey,
-	CoreFeatureKey,
-	Gateway,
-} from "../types";
+import type { AuthProvider, BuiltInToolKey, CoreFeatureKey } from "#cli/types";
+import type { ReadonlyInput } from "./readonly-input";
+import { builtInGateways } from "#cli/registry/gateways";
+import { mcpDefinition } from "../../../registry/src/plugins/mcp/manifest";
 
 type EnvVarName = string;
 
-export interface EnvRequirement {
-	description: string;
-	options: EnvVarName[][];
+interface EnvRequirement {
+  readonly description: string;
+  readonly options: readonly (readonly EnvVarName[])[];
 }
 
-export const gatewayEnvRequirements: Record<Gateway, EnvRequirement> = {
-	openrouter: {
-		options: [["OPENROUTER_API_KEY"]],
-		description: "OPENROUTER_API_KEY",
-	},
-	openai: {
-		options: [["OPENAI_API_KEY"]],
-		description: "OPENAI_API_KEY",
-	},
-	vercel: {
-		options: [["AI_GATEWAY_API_KEY"], ["VERCEL_OIDC_TOKEN"]],
-		description: "AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN",
-	},
-	"openai-compatible": {
-		options: [["OPENAI_COMPATIBLE_BASE_URL", "OPENAI_COMPATIBLE_API_KEY"]],
-		description: "OPENAI_COMPATIBLE_BASE_URL + OPENAI_COMPATIBLE_API_KEY",
-	},
-};
+const gatewayEnvRequirements: Record<string, EnvRequirement[]> =
+  Object.fromEntries(
+    builtInGateways.map(
+      (item: ReadonlyInput<(typeof builtInGateways)[number]>) => [
+        item.meta.chatjs.id,
+        item.meta.chatjs.envRequirements.map((requirement) => ({
+          ...requirement,
+          description:
+            requirement.description ??
+            requirement.options
+              .map((option) => option.join(" + "))
+              .join(" or "),
+        })),
+      ]
+    )
+  );
 
-export const coreFeatureEnvRequirements: Partial<
-	Record<CoreFeatureKey, EnvRequirement>
+const coreFeatureEnvRequirements: Partial<
+  Record<CoreFeatureKey, EnvRequirement[]>
 > = {
-	mcp: {
-		options: [["MCP_ENCRYPTION_KEY"]],
-		description: "MCP_ENCRYPTION_KEY",
-	},
-	attachments: {
-		options: [["BLOB_READ_WRITE_TOKEN"]],
-		description: "BLOB_READ_WRITE_TOKEN",
-	},
+  mcp: (mcpDefinition.envRequirements ?? []).map(
+    (
+      requirement: ReadonlyInput<
+        NonNullable<typeof mcpDefinition.envRequirements>[number]
+      >
+    ) => ({
+      ...requirement,
+      description:
+        requirement.description ??
+        requirement.options.map((group) => group.join(" + ")).join(" or "),
+    })
+  ),
 };
 
-export const builtInToolEnvRequirements: Record<
-	BuiltInToolKey,
-	EnvRequirement | undefined
+const builtInToolEnvRequirements: Record<
+  BuiltInToolKey,
+  EnvRequirement | undefined
 > = {
-	webSearch: {
-		options: [["TAVILY_API_KEY"], ["FIRECRAWL_API_KEY"]],
-		description: "TAVILY_API_KEY or FIRECRAWL_API_KEY",
-	},
-	urlRetrieval: {
-		options: [["FIRECRAWL_API_KEY"]],
-		description: "FIRECRAWL_API_KEY",
-	},
-	deepResearch: {
-		options: [["TAVILY_API_KEY"], ["FIRECRAWL_API_KEY"]],
-		description: "TAVILY_API_KEY or FIRECRAWL_API_KEY",
-	},
-	codeExecution: {
-		options: [
-			["VERCEL_OIDC_TOKEN"],
-			["VERCEL_TEAM_ID", "VERCEL_PROJECT_ID", "VERCEL_TOKEN"],
-		],
-		description:
-			"VERCEL_OIDC_TOKEN or VERCEL_TEAM_ID + VERCEL_PROJECT_ID + VERCEL_TOKEN",
-	},
-	imageGeneration: {
-		options: [["BLOB_READ_WRITE_TOKEN"]],
-		description: "BLOB_READ_WRITE_TOKEN",
-	},
-	videoGeneration: {
-		options: [["BLOB_READ_WRITE_TOKEN"]],
-		description: "BLOB_READ_WRITE_TOKEN",
-	},
+  codeExecution: undefined,
+  deepResearch: {
+    description: "TAVILY_API_KEY or FIRECRAWL_API_KEY",
+    options: [["TAVILY_API_KEY"], ["FIRECRAWL_API_KEY"]],
+  },
+  imageGeneration: undefined,
+  urlRetrieval: undefined,
+  videoGeneration: undefined,
+  webSearch: {
+    description: "TAVILY_API_KEY or FIRECRAWL_API_KEY",
+    options: [["TAVILY_API_KEY"], ["FIRECRAWL_API_KEY"]],
+  },
 };
 
-export const authEnvRequirements: Record<AuthProvider, EnvRequirement> = {
-	google: {
-		options: [["AUTH_GOOGLE_ID", "AUTH_GOOGLE_SECRET"]],
-		description: "AUTH_GOOGLE_ID + AUTH_GOOGLE_SECRET",
-	},
-	github: {
-		options: [["AUTH_GITHUB_ID", "AUTH_GITHUB_SECRET"]],
-		description: "AUTH_GITHUB_ID + AUTH_GITHUB_SECRET",
-	},
-	vercel: {
-		options: [["VERCEL_APP_CLIENT_ID", "VERCEL_APP_CLIENT_SECRET"]],
-		description: "VERCEL_APP_CLIENT_ID + VERCEL_APP_CLIENT_SECRET",
-	},
+const authEnvRequirements: Record<AuthProvider, EnvRequirement> = {
+  github: {
+    description: "AUTH_GITHUB_ID + AUTH_GITHUB_SECRET",
+    options: [["AUTH_GITHUB_ID", "AUTH_GITHUB_SECRET"]],
+  },
+  google: {
+    description: "AUTH_GOOGLE_ID + AUTH_GOOGLE_SECRET",
+    options: [["AUTH_GOOGLE_ID", "AUTH_GOOGLE_SECRET"]],
+  },
+  vercel: {
+    description: "VERCEL_APP_CLIENT_ID + VERCEL_APP_CLIENT_SECRET",
+    options: [["VERCEL_APP_CLIENT_ID", "VERCEL_APP_CLIENT_SECRET"]],
+  },
 };
 
-export const envVarDescriptions: Record<string, string> = {
-	AUTH_SECRET: "Secret used to sign auth sessions",
-	DATABASE_URL: "Database connection string",
-	OPENROUTER_API_KEY: "OpenRouter API key",
-	OPENAI_API_KEY: "OpenAI API key",
-	AI_GATEWAY_API_KEY: "Vercel AI Gateway API key",
-	VERCEL_OIDC_TOKEN: "OIDC token available in Vercel runtime",
-	OPENAI_COMPATIBLE_BASE_URL: "Base URL for OpenAI-compatible gateway",
-	OPENAI_COMPATIBLE_API_KEY: "API key for OpenAI-compatible gateway",
-	TAVILY_API_KEY: "Tavily API key for web search",
-	FIRECRAWL_API_KEY: "Firecrawl API key for search/retrieval",
-	MCP_ENCRYPTION_KEY: "Encryption key for MCP connector secrets",
-	BLOB_READ_WRITE_TOKEN: "Blob storage token for uploads and generated files",
-	VERCEL_TEAM_ID: "Vercel team id for sandbox execution",
-	VERCEL_PROJECT_ID: "Vercel project id for sandbox execution",
-	VERCEL_TOKEN: "Vercel token for sandbox execution",
-	AUTH_GOOGLE_ID: "Google OAuth client id",
-	AUTH_GOOGLE_SECRET: "Google OAuth client secret",
-	AUTH_GITHUB_ID: "GitHub OAuth client id",
-	AUTH_GITHUB_SECRET: "GitHub OAuth client secret",
-	VERCEL_APP_CLIENT_ID: "Vercel OAuth client id",
-	VERCEL_APP_CLIENT_SECRET: "Vercel OAuth client secret",
+const envVarDescriptions: Record<string, string> = {
+  AI_GATEWAY_API_KEY: "Vercel AI Gateway API key",
+  AUTH_GITHUB_ID: "GitHub OAuth client id",
+  AUTH_GITHUB_SECRET: "GitHub OAuth client secret",
+  AUTH_GOOGLE_ID: "Google OAuth client id",
+  AUTH_GOOGLE_SECRET: "Google OAuth client secret",
+  AUTH_SECRET: "Secret used to sign auth sessions",
+  DATABASE_URL: "Database connection string",
+  FIRECRAWL_API_KEY: "Firecrawl API key for search/retrieval",
+  LITELLM_API_KEY: "Optional API key for LiteLLM proxy",
+  LITELLM_BASE_URL: "Base URL for LiteLLM proxy",
+  MCP_ENCRYPTION_KEY: "Encryption key for MCP connector secrets",
+  OPENAI_API_KEY: "OpenAI API key",
+  OPENAI_COMPATIBLE_API_KEY: "API key for OpenAI-compatible gateway",
+  OPENAI_COMPATIBLE_BASE_URL: "Base URL for OpenAI-compatible gateway",
+  OPENROUTER_API_KEY: "OpenRouter API key",
+  TAVILY_API_KEY: "Tavily API key for web search",
+  VERCEL_APP_CLIENT_ID: "Vercel OAuth client id",
+  VERCEL_APP_CLIENT_SECRET: "Vercel OAuth client secret",
+  VERCEL_OIDC_TOKEN: "OIDC token available in Vercel runtime",
+  VERCEL_PROJECT_ID: "Vercel project id for sandbox execution",
+  VERCEL_TEAM_ID: "Vercel team id for sandbox execution",
+  VERCEL_TOKEN: "Vercel token for sandbox execution",
 };
+export {
+  authEnvRequirements,
+  builtInToolEnvRequirements,
+  coreFeatureEnvRequirements,
+  envVarDescriptions,
+  gatewayEnvRequirements,
+};
+export type { EnvRequirement };

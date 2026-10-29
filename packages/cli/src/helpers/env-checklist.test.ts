@@ -1,40 +1,234 @@
 import { describe, expect, it } from "bun:test";
+
 import { collectEnvChecklist } from "./env-checklist";
+import { coreFeatureEnvRequirements } from "./config-requirements";
+
+const requiredMcpEncryptionKeyCount = 1;
+const mcpRequirementGroupCount = 2;
 
 describe("collectEnvChecklist", () => {
-	it("includes installable tool env requirements", () => {
-		const entries = collectEnvChecklist({
-			gateway: "vercel",
-			coreFeatures: {
-				attachments: false,
-				parallelResponses: true,
-				documents: true,
-				mcp: false,
-				followupSuggestions: false,
-			},
-			builtInTools: {
-				webSearch: false,
-				urlRetrieval: false,
-				deepResearch: false,
-				codeExecution: false,
-				imageGeneration: false,
-				videoGeneration: false,
-			},
-			auth: {
-				google: false,
-				github: true,
-				vercel: false,
-			},
-			installableToolEnvRequirements: [
-				{
-					description: "FIRECRAWL_API_KEY",
-					options: [["FIRECRAWL_API_KEY"]],
-				},
-			],
-		});
+  it("uses the LiteLLM base URL as the gateway requirement", () => {
+    const entries = collectEnvChecklist({
+      auth: {
+        github: true,
+        google: false,
+        vercel: false,
+      },
+      builtInTools: {
+        codeExecution: false,
+        deepResearch: false,
+        imageGeneration: false,
+        urlRetrieval: false,
+        videoGeneration: false,
+        webSearch: false,
+      },
+      coreFeatures: {
+        attachments: false,
+        documents: true,
+        followupSuggestions: false,
+        feedback: false,
+        mcp: false,
+        projects: false,
+        parallelResponses: true,
+      },
+      gateway: "litellm",
+      installableToolEnvRequirements: [],
+    });
 
-		expect(entries.some((entry) => entry.vars === "FIRECRAWL_API_KEY")).toBe(
-			true,
-		);
-	});
+    expect(
+      entries.some(
+        (entry: { readonly vars: string }) => entry.vars === "LITELLM_BASE_URL"
+      )
+    ).toBe(true);
+    expect(
+      entries.some(
+        (entry: { readonly vars: string }) => entry.vars === "LITELLM_API_KEY"
+      )
+    ).toBe(false);
+  });
+
+  it("uses selected retrieval credentials without requiring Firecrawl", () => {
+    const entries = collectEnvChecklist({
+      auth: {
+        github: true,
+        google: false,
+        vercel: false,
+      },
+      builtInTools: {
+        codeExecution: false,
+        deepResearch: false,
+        imageGeneration: false,
+        urlRetrieval: true,
+        videoGeneration: false,
+        webSearch: false,
+      },
+      coreFeatures: {
+        attachments: false,
+        documents: true,
+        followupSuggestions: false,
+        feedback: false,
+        mcp: false,
+        projects: false,
+        parallelResponses: true,
+      },
+      gateway: "vercel",
+      installableToolEnvRequirements: [
+        {
+          description: "PAGE_TOKEN",
+          options: [["PAGE_TOKEN"]],
+        },
+      ],
+    });
+
+    expect(
+      entries.some(
+        (entry: { readonly vars: string }) => entry.vars === "PAGE_TOKEN"
+      )
+    ).toBe(true);
+    expect(
+      entries.some((entry: { readonly vars: string }) =>
+        entry.vars.includes("FIRECRAWL")
+      )
+    ).toBe(false);
+  });
+
+  it("keeps required, gateway, plugin, and authentication entries ordered", () => {
+    const entries = collectEnvChecklist({
+      auth: {
+        github: true,
+        google: false,
+        vercel: false,
+      },
+      builtInTools: {
+        codeExecution: false,
+        deepResearch: false,
+        imageGeneration: false,
+        urlRetrieval: false,
+        videoGeneration: false,
+        webSearch: false,
+      },
+      coreFeatures: {
+        attachments: false,
+        documents: false,
+        followupSuggestions: false,
+        feedback: false,
+        mcp: true,
+        projects: false,
+        parallelResponses: false,
+      },
+      gateway: "litellm",
+    });
+
+    expect(
+      entries.filter(
+        (entry: { readonly vars: string }) =>
+          entry.vars === "MCP_ENCRYPTION_KEY"
+      )
+    ).toHaveLength(requiredMcpEncryptionKeyCount);
+    expect(
+      entries.map((entry: { readonly vars: string }) => entry.vars)
+    ).toEqual([
+      "AUTH_SECRET",
+      "DATABASE_URL",
+      "LITELLM_BASE_URL",
+      "MCP_ENCRYPTION_KEY",
+      "AUTH_GITHUB_ID + AUTH_GITHUB_SECRET",
+    ]);
+  });
+
+  it("keeps installable requirements with an empty description", () => {
+    const entries = collectEnvChecklist({
+      auth: { github: false, google: false, vercel: false },
+      builtInTools: {
+        codeExecution: false,
+        deepResearch: false,
+        imageGeneration: false,
+        urlRetrieval: false,
+        videoGeneration: false,
+        webSearch: false,
+      },
+      coreFeatures: {
+        attachments: false,
+        documents: false,
+        followupSuggestions: false,
+        feedback: false,
+        mcp: false,
+        projects: false,
+        parallelResponses: false,
+      },
+      gateway: "vercel",
+      installableToolEnvRequirements: [
+        { description: "", options: [["CUSTOM_TOKEN"]] },
+      ],
+    });
+
+    expect(
+      entries.some(
+        (entry: { readonly vars: string }) => entry.vars === "CUSTOM_TOKEN"
+      )
+    ).toBe(true);
+  });
+});
+
+it("includes every installed MCP requirement and preserves combined and alternative groups", () => {
+  const previous = coreFeatureEnvRequirements.mcp;
+  coreFeatureEnvRequirements.mcp = [
+    { description: "First", options: [["MCP_ENCRYPTION_KEY"]] },
+    { description: "Second", options: [["TEAM", "TOKEN"], ["OIDC_TOKEN"]] },
+  ];
+  try {
+    const entries = collectEnvChecklist({
+      auth: { github: false, google: false, vercel: false },
+      builtInTools: {
+        codeExecution: false,
+        deepResearch: false,
+        imageGeneration: false,
+        urlRetrieval: false,
+        videoGeneration: false,
+        webSearch: false,
+      },
+      coreFeatures: {
+        attachments: false,
+        documents: false,
+        followupSuggestions: false,
+        feedback: false,
+        mcp: true,
+        projects: false,
+        parallelResponses: false,
+      },
+      gateway: "openai",
+      gatewayRequirements: [],
+      installableToolEnvRequirements: [
+        { description: "Registry label", options: [["MCP_ENCRYPTION_KEY"]] },
+        {
+          description: "Reordered alternatives",
+          options: [["OIDC_TOKEN"], ["TOKEN", "TEAM"]],
+        },
+      ],
+    });
+    expect(
+      entries.filter(
+        (entry: { readonly vars: string }) =>
+          entry.vars === "MCP_ENCRYPTION_KEY"
+      )
+    ).toHaveLength(requiredMcpEncryptionKeyCount);
+    const variables = entries.map(
+      (entry: { readonly vars: string }) => entry.vars
+    );
+    for (const required of [
+      "MCP_ENCRYPTION_KEY",
+      "TEAM + TOKEN",
+      "OIDC_TOKEN",
+    ]) {
+      expect(variables).toContain(required);
+    }
+    expect(
+      entries.filter(
+        (entry: { readonly oneOfGroup?: string }) =>
+          entry.oneOfGroup === "TEAM+TOKEN|OIDC_TOKEN"
+      )
+    ).toHaveLength(mcpRequirementGroupCount);
+  } finally {
+    coreFeatureEnvRequirements.mcp = previous;
+  }
 });

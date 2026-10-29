@@ -1,59 +1,63 @@
 "use client";
+import React from "react";
 
+import type { ReadonlyReactNode } from "@/lib/readonly-react-node";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 
-export function SettingsPage({
+const SettingsPage = ({
   children,
   className,
 }: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <div
-      className={cn(
-        "flex min-h-0 flex-1 flex-col gap-6 overflow-hidden",
-        className
-      )}
-    >
-      {children}
-    </div>
-  );
-}
+  readonly children: ReadonlyReactNode;
+  readonly className?: string;
+}): React.JSX.Element => (
+  <div
+    className={cn(
+      "flex min-h-0 flex-1 flex-col gap-6 overflow-hidden",
+      className
+    )}
+  >
+    {children}
+  </div>
+);
 
-export function SettingsPageHeader({
+const SettingsPageHeader = ({
   children,
   className,
 }: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return <div className={cn("shrink-0", className)}>{children}</div>;
-}
+  readonly children: ReadonlyReactNode;
+  readonly className?: string;
+}): React.JSX.Element => (
+  <div className={cn("shrink-0", className)}>{children}</div>
+);
 
-export function SettingsPageContent({
+const SettingsPageContent = ({
   children,
   className,
 }: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <div
-      className={cn("flex min-h-0 flex-1 flex-col overflow-hidden", className)}
-    >
-      {children}
-    </div>
-  );
-}
+  readonly children: ReadonlyReactNode;
+  readonly className?: string;
+}): React.JSX.Element => (
+  <div
+    className={cn("flex min-h-0 flex-1 flex-col overflow-hidden", className)}
+  >
+    {children}
+  </div>
+);
 
-export function SettingsPageScrollArea({
+const SettingsPageScrollArea = ({
   children,
   className,
 }: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return <ScrollArea className={className}>{children}</ScrollArea>;
-}
+  readonly children: ReadonlyReactNode;
+  readonly className?: string;
+}): React.JSX.Element => (
+  <ScrollArea className={className}>{children}</ScrollArea>
+);
+export {
+  SettingsPage,
+  SettingsPageContent,
+  SettingsPageHeader,
+  SettingsPageScrollArea,
+};

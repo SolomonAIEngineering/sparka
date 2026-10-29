@@ -8,7 +8,7 @@ This page explains the URL routing structure used in ChatJS.
 ## Route Types
 
 | Route Pattern | Description |
-|---------------|-------------|
+| --- | --- |
 | `/` | Home page, draft chat (not yet persisted) |
 | `/chat/:id` | Standalone chat page |
 | `/share/:id` | Public shared chat page (read-only) |
@@ -26,4 +26,4 @@ Use `parseChatIdFromPathname` from `@/providers/parse-chat-id-from-pathname` to 
 
 See [Next.js Chat Transition](/cookbook/next-chat-transition) for how draft ids and runtime keys preserve state during first-message navigation.
 
-See [Projects](/features/projects) for how project-scoped routes work.
+See [Projects](/plugins/projects) for how project-scoped routes work.

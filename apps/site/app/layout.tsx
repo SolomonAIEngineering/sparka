@@ -1,116 +1,144 @@
-import { Analytics } from "@vercel/analytics/next";
-import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
+import type { Metadata, Viewport } from "next";
+import { Analytics } from "@vercel/analytics/next";
+import React from "react";
 import { ThemeProvider } from "next-themes";
 
 import { siteConfig } from "@/lib/site-config";
 
 import "./globals.css";
 
-export const metadata: Metadata = {
-  metadataBase: new URL(siteConfig.url),
-  applicationName: siteConfig.name,
-  title: {
-    default: `${siteConfig.title} — The Prod-Ready AI Chat App`,
-    template: `%s | ${siteConfig.title}`,
-  },
-  description: siteConfig.description,
-  keywords: [...siteConfig.keywords],
-  authors: [{ name: "Francisco Moretti" }],
-  creator: "Francisco Moretti",
-  publisher: siteConfig.name,
-  category: "technology",
+const metadata: Metadata = {
   alternates: {
     types: {
       "application/rss+xml": `${siteConfig.docsUrl}/rss.xml`,
     },
   },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: siteConfig.shortName,
+  },
+  applicationName: siteConfig.name,
+  authors: [{ name: "Francisco Moretti" }],
+  category: "technology",
+  creator: "Francisco Moretti",
+  description: siteConfig.description,
   formatDetection: {
-    email: false,
     address: false,
+    email: false,
     telephone: false,
   },
+  keywords: [...siteConfig.keywords],
+  metadataBase: new URL(siteConfig.url),
   openGraph: {
-    type: "website",
-    locale: "en_US",
-    siteName: siteConfig.name,
-    url: siteConfig.url,
-    title: `${siteConfig.title} — The Prod-Ready AI Chat App`,
     description: siteConfig.description,
     images: [
       {
+        alt: "ChatJS AI chat application interface preview",
+        height: 630,
         url: siteConfig.ogImage,
         width: 1200,
-        height: 630,
-        alt: "ChatJS AI chat application interface preview",
       },
     ],
+    locale: "en_US",
+    siteName: siteConfig.name,
+    title: `${siteConfig.title} — The Prod-Ready AI Chat App`,
+    type: "website",
+    url: siteConfig.url,
+  },
+  publisher: siteConfig.name,
+  title: {
+    default: `${siteConfig.title} — The Prod-Ready AI Chat App`,
+    template: `%s | ${siteConfig.title}`,
   },
   twitter: {
     card: "summary_large_image",
     creator: siteConfig.creator,
-    title: `${siteConfig.title} — The Prod-Ready AI Chat App`,
     description: siteConfig.description,
     images: [siteConfig.ogImage],
-  },
-  appleWebApp: {
-    capable: true,
-    title: siteConfig.shortName,
-    statusBarStyle: "default",
+    title: `${siteConfig.title} — The Prod-Ready AI Chat App`,
   },
 };
 
-export const viewport: Viewport = {
-  width: "device-width",
+const viewport: Viewport = {
   initialScale: 1,
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f8f7f4" },
-    { media: "(prefers-color-scheme: dark)", color: "#09090b" },
+    { color: "#f8f7f4", media: "(prefers-color-scheme: light)" },
+    { color: "#09090b", media: "(prefers-color-scheme: dark)" },
   ],
+  width: "device-width",
 };
 
 const geist = Geist({
-  subsets: ["latin"],
   display: "swap",
+  subsets: ["latin"],
   variable: "--font-geist",
 });
 
 const geistMono = Geist_Mono({
-  subsets: ["latin"],
   display: "swap",
+  subsets: ["latin"],
   variable: "--font-geist-mono",
 });
 
 const instrumentSerif = Instrument_Serif({
-  subsets: ["latin"],
-  weight: "400",
-  style: ["normal", "italic"],
   display: "swap",
+  style: ["normal", "italic"],
+  subsets: ["latin"],
   variable: "--font-instrument-serif",
+  weight: "400",
 });
 
-export default function RootLayout({
+type ReadonlyReactIteratorResult =
+  | { readonly done?: false; readonly value: ReadonlyReactNode }
+  | { readonly done: true; readonly value: unknown };
+interface ReadonlyReactIterator {
+  readonly next: () => ReadonlyReactIteratorResult;
+  readonly [Symbol.iterator]?: () => ReadonlyReactIterator;
+}
+interface ReadonlyReactIterable {
+  readonly [Symbol.iterator]: () => ReadonlyReactIterator;
+}
+type ReadonlyAwaitedNode =
+  | Readonly<React.ReactElement>
+  | string
+  | number
+  | bigint
+  | ReadonlyReactIterable
+  | (Omit<Readonly<React.ReactPortal>, "children"> & {
+      readonly children: ReadonlyReactNode;
+    })
+  | boolean
+  | null
+  | undefined;
+type ReadonlyReactNode =
+  | ReadonlyAwaitedNode
+  | Readonly<Promise<ReadonlyAwaitedNode>>;
+
+const RootLayout = ({
   children,
 }: Readonly<{
-  children: React.ReactNode;
-}>) {
-  return (
-    <html
-      className={`${geist.variable} ${geistMono.variable} ${instrumentSerif.variable}`}
-      lang="en"
-      suppressHydrationWarning
-    >
-      <body className="antialiased">
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          disableTransitionOnChange
-          enableSystem
-        >
-          {children}
-        </ThemeProvider>
-        <Analytics />
-      </body>
-    </html>
-  );
-}
+  children: ReadonlyReactNode;
+}>): React.JSX.Element => (
+  <html
+    className={`${geist.variable} ${geistMono.variable} ${instrumentSerif.variable}`}
+    lang="en"
+    suppressHydrationWarning
+  >
+    <body className="antialiased">
+      <ThemeProvider
+        attribute="class"
+        defaultTheme="system"
+        disableTransitionOnChange
+        enableSystem
+      >
+        {children}
+      </ThemeProvider>
+      <Analytics />
+    </body>
+  </html>
+);
+
+export { metadata, viewport };
+export default RootLayout;

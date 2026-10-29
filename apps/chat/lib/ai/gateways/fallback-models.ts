@@ -1,10 +1,9 @@
-import { createModuleLogger } from "@/lib/logger";
-import type { AiGatewayModel } from "../ai-gateway-models-schemas";
 import {
   models as fallbackModels,
   generatedForGateway,
-} from "../models.generated";
-import type { GatewayType } from "./registry";
+} from "@/lib/ai/models.generated";
+import type { AiGatewayModel } from "@chat-js/gateways/models";
+import { createModuleLogger } from "@/lib/logger";
 
 const log = createModuleLogger("ai/gateways/fallback");
 
@@ -13,16 +12,18 @@ const log = createModuleLogger("ai/gateways/fallback");
  * requested gateway. When there's a mismatch the snapshot contains model
  * IDs from a different provider, so returning them would cause resolution
  * errors — an empty array is safer.
+ * @param {string} gateway - Gateway requesting the offline catalog snapshot.
+ * @returns {readonly AiGatewayModel[]} Generated catalog when gateway identities match, otherwise an empty catalog.
  */
-export function getFallbackModels(
-  gateway: GatewayType
-): readonly AiGatewayModel[] {
+export const getFallbackModels = (
+  gateway: string
+): readonly AiGatewayModel[] => {
   if (generatedForGateway !== gateway) {
     log.warn(
-      { expected: gateway, actual: generatedForGateway },
+      { actual: generatedForGateway, expected: gateway },
       "Fallback snapshot was generated for a different gateway, skipping. Run `bun fetch:models` to regenerate."
     );
     return [];
   }
-  return fallbackModels as unknown as AiGatewayModel[];
-}
+  return fallbackModels;
+};

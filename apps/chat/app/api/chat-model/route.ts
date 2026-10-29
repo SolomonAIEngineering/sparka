@@ -1,12 +1,23 @@
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { type NextRequest, NextResponse } from "next/server";
+
+const MODEL_COOKIE_MAX_AGE_SECONDS = 31_536_000;
 
 // Route for updating selected-model cookie because setting in an action causes a refresh
-export async function POST(request: NextRequest) {
+export const POST = async (
+  request: Readonly<Pick<NextRequest, "json">>
+): Promise<
+  NextResponse<{ error: string }> | NextResponse<{ success: boolean }>
+> => {
   try {
-    const { model } = await request.json();
+    const body: unknown = await request.json();
+    const model =
+      typeof body === "object" && body !== null && "model" in body
+        ? body.model
+        : undefined;
 
-    if (!model || typeof model !== "string") {
+    if (typeof model !== "string" || model === "") {
       return NextResponse.json(
         { error: "Invalid model parameter" },
         { status: 400 }
@@ -14,18 +25,19 @@ export async function POST(request: NextRequest) {
     }
 
     const cookieStore = await cookies();
+    // One year.
     cookieStore.set("chat-model", model, {
+      maxAge: MODEL_COOKIE_MAX_AGE_SECONDS,
       path: "/",
-      maxAge: 60 * 60 * 24 * 365, // 1 year
       sameSite: "lax",
       secure: process.env.NODE_ENV === "production",
     });
 
     return NextResponse.json({ success: true });
-  } catch (_error) {
+  } catch {
     return NextResponse.json(
       { error: "Failed to set cookie" },
       { status: 500 }
     );
   }
-}
+};

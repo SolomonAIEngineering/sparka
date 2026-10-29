@@ -1,12 +1,7 @@
 import { config } from "@/lib/config";
 import { isPlaywrightTestEnvironment as getIsPlaywrightTestEnvironment } from "@/lib/playwright-test-environment";
 
-const _isProductionEnvironment = process.env.NODE_ENV === "production";
+const isPlaywrightTestEnvironment = getIsPlaywrightTestEnvironment(process.env);
 
-export const isPlaywrightTestEnvironment = getIsPlaywrightTestEnvironment(
-  process.env
-);
-
-export const BLOB_FILE_PREFIX = `${config.appPrefix}/files/`;
-
-export const ANONYMOUS_SESSION_COOKIES_KEY = "anonymous-session";
+const FILE_STORAGE_PREFIX = `${config.appPrefix}/files/`;
+export { FILE_STORAGE_PREFIX, isPlaywrightTestEnvironment };

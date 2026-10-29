@@ -1,27 +1,27 @@
-import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+
 import { auth } from "@/lib/auth";
-import { config as appConfig } from "@/lib/config";
+import { installedAuth } from "@/composition/generated/installed-auth";
 import { isPlaywrightTestEnvironment } from "@/lib/constants";
 
-function isPublicApiRoute(pathname: string): boolean {
-  return (
-    pathname.startsWith("/api/auth") ||
-    pathname.startsWith("/api/trpc") ||
-    pathname === "/api/chat" ||
-    pathname.startsWith("/api/chat/")
-  );
-}
+const EVE_CHAT_PAGE = /^\/chat\/[^/]+$/u;
 
-function isMetadataRoute(pathname: string): boolean {
-  return (
-    pathname === "/sitemap.xml" ||
-    pathname === "/robots.txt" ||
-    pathname === "/manifest.webmanifest"
-  );
-}
+const isPublicApiRoute = (pathname: string): boolean =>
+  // Eve routes enforce their own gateway authentication in the worker.
+  pathname.startsWith("/eve/") ||
+  pathname.startsWith("/api/auth") ||
+  pathname.startsWith("/api/trpc");
 
-function isPublicPage(pathname: string): boolean {
+const isMetadataRoute = (pathname: string): boolean =>
+  pathname === "/sitemap.xml" ||
+  pathname === "/robots.txt" ||
+  pathname === "/manifest.webmanifest";
+
+const isPublicPage = (pathname: string): boolean => {
+  // EVE pages resolve registered/guest principals and enforce conversation ownership.
+  if (EVE_CHAT_PAGE.test(pathname)) {
+    return true;
+  }
   if (pathname === "/") {
     return true;
   }
@@ -32,58 +32,82 @@ function isPublicPage(pathname: string): boolean {
     pathname.startsWith("/privacy") ||
     pathname.startsWith("/terms")
   );
-}
+};
 
-function isAuthPage(pathname: string): boolean {
-  return (
-    pathname.startsWith("/login") ||
-    pathname.startsWith("/register") ||
-    isDeviceLoginPage(pathname)
-  );
-}
+const isAuthPage = (pathname: string): boolean =>
+  pathname.startsWith("/login") || pathname.startsWith("/register");
 
-function isDeviceLoginPage(pathname: string): boolean {
-  return appConfig.desktopApp.enabled && pathname.startsWith("/device-login");
-}
-
-function getSafeReturnTo(url: URL): string | null {
+const getSafeReturnTo = (
+  url: Readonly<{ searchParams: Readonly<{ get: URLSearchParams["get"] }> }>
+): string => {
   const returnTo = url.searchParams.get("returnTo");
-  if (!returnTo?.startsWith("/") || returnTo.startsWith("//")) {
-    return null;
+  if (returnTo?.startsWith("/") !== true || returnTo.startsWith("//")) {
+    return "/";
   }
   return returnTo;
-}
+};
+type ReadonlyRedirectUrl = Readonly<
+  Omit<URL, "searchParams"> & { searchParams: Readonly<URLSearchParams> }
+>;
 
-export async function proxy(req: NextRequest) {
-  const url = req.nextUrl;
-  const { pathname } = url;
-
-  if (isPublicApiRoute(pathname) || isMetadataRoute(pathname)) {
-    return;
+const resolvePageResponse = ({
+  isPluginAuthRoute,
+  isLoggedIn,
+  pathname,
+  returnTo,
+  url,
+}: {
+  readonly isPluginAuthRoute: boolean;
+  readonly isLoggedIn: boolean;
+  readonly pathname: string;
+  readonly returnTo: string;
+  readonly url: ReadonlyRedirectUrl;
+}): NextResponse | undefined => {
+  if (isLoggedIn && isAuthPage(pathname) && !isPluginAuthRoute) {
+    return NextResponse.redirect(new URL(returnTo, url));
   }
 
-  if (isPlaywrightTestEnvironment) {
-    // Playwright CI runs the app anonymously and should never reach session I/O.
-    return;
-  }
-
-  const session = await auth.api.getSession({ headers: req.headers });
-  const isLoggedIn = !!session?.user;
-  const isDeviceLoginRoute = isDeviceLoginPage(pathname);
-  const returnTo = getSafeReturnTo(url);
-
-  if (isLoggedIn && isAuthPage(pathname) && !isDeviceLoginRoute) {
-    return NextResponse.redirect(new URL(returnTo ?? "/", url));
-  }
-
-  if (isAuthPage(pathname) || isPublicPage(pathname)) {
-    return;
+  if (isPluginAuthRoute || isAuthPage(pathname) || isPublicPage(pathname)) {
+    return undefined;
   }
 
   if (!isLoggedIn) {
     return NextResponse.redirect(new URL("/login", url));
   }
-}
+  return undefined;
+};
+
+export const proxy = async (
+  req: Readonly<{
+    headers: Readonly<Headers>;
+    nextUrl: ReadonlyRedirectUrl;
+  }>
+): Promise<NextResponse | undefined> => {
+  const url = req.nextUrl;
+  const { pathname } = url;
+
+  if (
+    isPublicApiRoute(pathname) ||
+    isMetadataRoute(pathname) ||
+    isPlaywrightTestEnvironment
+  ) {
+    // API/metadata and anonymous Playwright requests never reach session I/O.
+    return undefined;
+  }
+
+  const session = await auth.api.getSession({ headers: req.headers });
+  const isLoggedIn = Boolean(session?.user);
+  const isPluginAuthRoute = installedAuth.isAuthRoute(url);
+  const returnTo = getSafeReturnTo(url);
+
+  return resolvePageResponse({
+    isPluginAuthRoute,
+    isLoggedIn,
+    pathname,
+    returnTo,
+    url,
+  });
+};
 
 export const config = {
   matcher: [
@@ -97,8 +121,8 @@ export const config = {
      * - Images and other static assets (.svg, .png, .jpg, .jpeg, .gif, .webp, .ico)
      * - models
      * - compare
-     * - docs (Mintlify documentation)
+     * - docs (Blume documentation)
      */
-    "/((?!api|docs|_next/static|_next/image|favicon.ico|opengraph-image|manifest|models|compare|privacy|terms|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|json|webmanifest)$).*)",
+    "/((?!api|docs|_next/static|_next/image|favicon.ico|opengraph-image|manifest|models|compare|privacy|terms|.*[.](?:svg|png|jpg|jpeg|gif|webp|ico|json|webmanifest)$).*)",
   ],
 };

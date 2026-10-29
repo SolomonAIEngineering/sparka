@@ -1,300 +1,127 @@
 #!/usr/bin/env bun
+import { sandboxEnvRequirements, sandboxId } from "@/lib/sandbox/options";
 /**
  * Build-time config validation script.
- * Validates that enabled features in config have their required env vars.
+ * Validates environment requirements for installed integrations.
  * Run via `bun run check-env` or automatically in prebuild.
  */
-import fs from "node:fs/promises";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { config as loadEnvConfig } from "dotenv";
-// biome-ignore lint/performance/noNamespaceImport: TypeScript API requires namespace import due to extensive usage
-import * as ts from "typescript";
-import type { GatewayType } from "../lib/ai/gateways/registry";
-import { generatedForGateway } from "../lib/ai/models.generated";
-import { config } from "../lib/config";
 import {
-  aiToolEnvRequirements,
   authEnvRequirements,
-  featureEnvRequirements,
-  gatewayEnvRequirements,
   getMissingRequirement,
   isRequirementSatisfied,
-} from "../lib/config-requirements";
-import { isPlaywrightTestEnvironment } from "../lib/playwright-test-environment";
+} from "@/lib/config-requirements";
+import {
+  formatGatewaySnapshotWarning,
+  reportEnvironmentFailure,
+  reportEnvironmentSuccess,
+} from "./environment-validation-report";
+import { storageEnvRequirements, storageId } from "@/lib/storage-options";
+
+import { config } from "@/lib/config";
+import { databaseEnvOptions } from "@/lib/db/connection";
+import fs from "node:fs/promises";
+import { gatewayEnvRequirements } from "@/lib/ai/gateway-model-defaults";
+import { generatedForGateway } from "@/lib/ai/models.generated";
+import { getEveRuntimeEnvOptions } from "@/lib/env-schema";
+import { installedPlugins } from "@/composition/generated/installed";
+import { installedToolNames } from "@/composition/generated/installed-tools";
+import { isPlaywrightTestEnvironment } from "@/lib/playwright-test-environment";
+import { config as loadEnvConfig } from "dotenv";
+import path from "node:path";
+import { resolveEveEnvironment } from "@/lib/eve/environment";
+import { z } from "zod";
+import { validateInstalledEnvironment } from "./installed-environment-validation";
 
 loadEnvConfig({ path: ".env.local" });
 loadEnvConfig();
+
+type RequirementInput = Parameters<typeof getMissingRequirement>["0"];
 
 interface ValidationError {
   feature: string;
   missing: string[];
 }
 
-type StaticToolEnvVar = {
-  description?: string;
-  options: string[][];
-};
+const VALIDATION_FAILURE_EXIT_STATUS = 1;
+const MINIMUM_NONEMPTY_OPTION_COUNT = 1;
+const EMPTY_MISSING_REQUIREMENT_COUNT = 0;
 
-type StaticToolEnvVars = StaticToolEnvVar[];
+const projectRoot = path.resolve(import.meta.dirname, "..");
+const nonEmptyEnvironmentOptionSchema = z
+  .array(z.string())
+  .min(MINIMUM_NONEMPTY_OPTION_COUNT);
+const toolEnvironmentRequirementSchema = z.object({
+  description: z.string().optional(),
+  options: z
+    .array(nonEmptyEnvironmentOptionSchema)
+    .min(MINIMUM_NONEMPTY_OPTION_COUNT),
+  runtimeAuth: z.literal("vercel-oidc").optional(),
+});
+const toolEnvironmentSchema = z.object({
+  environmentValidation: z.string().optional(),
+  envRequirements: z.array(toolEnvironmentRequirementSchema).default([]),
+});
 
-type StaticToolMetadata = {
-  toolEnvVars: StaticToolEnvVars;
-};
-
-const projectRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  ".."
-);
-
-function unwrapExpression(node: ts.Expression): ts.Expression {
-  if (ts.isAsExpression(node) || ts.isSatisfiesExpression(node)) {
-    return unwrapExpression(node.expression);
-  }
-  return node;
-}
-
-function readString(node: ts.Expression): string | null {
-  const expr = unwrapExpression(node);
-  if (ts.isStringLiteral(expr) || ts.isNoSubstitutionTemplateLiteral(expr)) {
-    return expr.text;
-  }
-  return null;
-}
-
-function readStringArray(node: ts.Expression): string[] | null {
-  const expr = unwrapExpression(node);
-  if (!ts.isArrayLiteralExpression(expr)) {
-    return null;
-  }
-
-  const values: string[] = [];
-  for (const element of expr.elements) {
-    if (!ts.isExpression(element)) {
-      return null;
-    }
-    const value = readString(element);
-    if (value === null) {
-      return null;
-    }
-    values.push(value);
-  }
-
-  return values;
-}
-
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: AST traversal logic is inherently complex
-function readToolEnvVar(node: ts.Expression): StaticToolEnvVar | null {
-  const expr = unwrapExpression(node);
-  if (!ts.isObjectLiteralExpression(expr)) {
-    return null;
-  }
-
-  let description: string | null = null;
-  let options: string[][] | null = null;
-
-  for (const property of expr.properties) {
-    if (!ts.isPropertyAssignment(property)) {
-      return null;
-    }
-
-    const nameNode = property.name;
-    const name =
-      ts.isIdentifier(nameNode) || ts.isStringLiteral(nameNode)
-        ? nameNode.text
-        : null;
-
-    if (name === "description") {
-      description = readString(property.initializer);
-    } else if (name === "options") {
-      const outer = unwrapExpression(property.initializer);
-      if (!ts.isArrayLiteralExpression(outer)) {
-        return null;
-      }
-
-      const groups: string[][] = [];
-      for (const element of outer.elements) {
-        if (!ts.isExpression(element)) {
-          return null;
-        }
-        const group = readStringArray(element);
-        if (group === null) {
-          return null;
-        }
-        groups.push(group);
-      }
-      options = groups;
-    }
-  }
-
-  return options ? { ...(description ? { description } : {}), options } : null;
-}
-
-function readToolEnvVars(node: ts.Expression): StaticToolEnvVars {
-  const expr = unwrapExpression(node);
-  if (!ts.isArrayLiteralExpression(expr)) {
-    return [];
-  }
-
-  const toolEnvVars: StaticToolEnvVars = [];
-  for (const element of expr.elements) {
-    if (!ts.isExpression(element)) {
-      return [];
-    }
-    const toolEnvVar = readToolEnvVar(element);
-    if (!toolEnvVar) {
-      return [];
-    }
-    toolEnvVars.push(toolEnvVar);
-  }
-
-  return toolEnvVars;
-}
-
-function readStaticToolMetadata(sourceText: string): StaticToolMetadata {
-  const sourceFile = ts.createSourceFile(
-    "tool.ts",
-    sourceText,
-    ts.ScriptTarget.ESNext,
-    true,
-    ts.ScriptKind.TS
-  );
-  const toolEnvVars: StaticToolEnvVars = [];
-
-  function visit(node: ts.Node): void {
-    if (
-      ts.isVariableStatement(node) &&
-      node.modifiers?.some(
-        (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword
-      )
-    ) {
-      for (const declaration of node.declarationList.declarations) {
-        if (declaration.name.getText() !== "toolEnvVars") {
-          continue;
-        }
-        const initializer = declaration.initializer;
-        if (initializer && ts.isExpression(initializer)) {
-          toolEnvVars.push(...readToolEnvVars(initializer));
-        }
-      }
-    }
-
-    ts.forEachChild(node, visit);
-  }
-
-  visit(sourceFile);
-
-  return {
-    toolEnvVars,
-  };
-}
-
-function resolveToolsDir(toolsPath: string): string {
-  if (toolsPath.startsWith("@/")) {
-    return path.resolve(projectRoot, toolsPath.slice(2));
-  }
-
-  if (toolsPath.startsWith("./") || toolsPath.startsWith("../")) {
-    return path.resolve(projectRoot, toolsPath);
-  }
-
-  if (path.isAbsolute(toolsPath)) {
-    return toolsPath;
-  }
-
-  return path.resolve(projectRoot, toolsPath);
-}
-
-function validateGatewayKey(env: NodeJS.ProcessEnv): ValidationError | null {
-  // Prevent TS from narrowing to the current literal config value.
-  const gateway = (() => config.ai.gateway as GatewayType)();
-  const requirement = gatewayEnvRequirements[gateway];
-  const missing = getMissingRequirement(requirement, env);
-  if (!missing) {
+const validateGatewayKey = (
+  env: Readonly<NodeJS.ProcessEnv>
+): ValidationError | null => {
+  const gateway: string = config.ai.gateway;
+  const missing = gatewayEnvRequirements
+    .map((requirement: RequirementInput) =>
+      getMissingRequirement(requirement, env)
+    )
+    .filter((value) => value !== null);
+  if (missing.length === EMPTY_MISSING_REQUIREMENT_COUNT) {
     return null;
   }
   return {
     feature: `aiGateway (${gateway})`,
-    missing: [missing],
+    missing,
   };
-}
+};
 
-function validateFeatures(env: NodeJS.ProcessEnv): ValidationError[] {
-  const errors: ValidationError[] = [];
-
-  const gatewayError = validateGatewayKey(env);
-  if (gatewayError) {
-    errors.push(gatewayError);
+const validateStorage = (
+  env: Readonly<NodeJS.ProcessEnv>
+): ValidationError | null => {
+  if (
+    !(
+      installedPlugins.has("attachment-uploads") ||
+      installedToolNames.has("generateImage") ||
+      installedToolNames.has("generateVideo")
+    )
+  ) {
+    return null;
   }
+  const missing = storageEnvRequirements
+    .map((requirement: RequirementInput) =>
+      getMissingRequirement(requirement, env)
+    )
+    .filter((value) => value !== null);
 
-  const featureEntries = Object.entries(featureEnvRequirements) as [
-    keyof typeof featureEnvRequirements,
-    NonNullable<
-      (typeof featureEnvRequirements)[keyof typeof featureEnvRequirements]
-    >,
-  ][];
-  for (const [feature, requirement] of featureEntries) {
-    if (!(requirement && config.features[feature])) {
-      continue;
-    }
-    const missing = getMissingRequirement(requirement, env);
-    if (missing) {
-      errors.push({
-        feature: `features.${feature}`,
-        missing: [missing],
-      });
-    }
+  if (missing.length > EMPTY_MISSING_REQUIREMENT_COUNT) {
+    return { feature: `fileStorage (${storageId})`, missing };
   }
+  return null;
+};
 
-  return errors;
-}
-
-function validateAiTools(env: NodeJS.ProcessEnv): ValidationError[] {
-  const errors: ValidationError[] = [];
-
-  const toolEntries = Object.entries(aiToolEnvRequirements) as [
-    keyof typeof aiToolEnvRequirements,
-    NonNullable<
-      (typeof aiToolEnvRequirements)[keyof typeof aiToolEnvRequirements]
-    >,
-  ][];
-
-  for (const [tool, requirement] of toolEntries) {
-    const toolConfig = config.ai.tools[tool];
-    if (!(requirement && "enabled" in toolConfig && toolConfig.enabled)) {
-      continue;
-    }
-    const missing = getMissingRequirement(requirement, env);
-    if (missing) {
-      errors.push({
-        feature: `ai.tools.${tool}`,
-        missing: [missing],
-      });
-    }
-  }
-
-  return errors;
-}
-
-function validateAuthentication(env: NodeJS.ProcessEnv): ValidationError[] {
-  const errors: ValidationError[] = [];
-
-  const authKeys = Object.keys(authEnvRequirements) as Array<
-    keyof typeof authEnvRequirements
-  >;
-  for (const provider of authKeys) {
+const validateAuthentication = (
+  env: Readonly<NodeJS.ProcessEnv>
+): ValidationError[] => {
+  const authKeys = Object.keys(authEnvRequirements).filter(
+    (key): key is keyof typeof authEnvRequirements =>
+      Object.hasOwn(authEnvRequirements, key)
+  );
+  const errors = authKeys.flatMap((provider): ValidationError[] => {
     if (!config.authentication[provider]) {
-      continue;
+      return [];
     }
     const requirement = authEnvRequirements[provider];
     const missing = getMissingRequirement(requirement, env);
-    if (missing) {
-      errors.push({
-        feature: `authentication.${provider}`,
-        missing: [missing],
-      });
+    if (typeof missing === "string" && missing !== "") {
+      return [{ feature: `authentication.${provider}`, missing: [missing] }];
     }
-  }
+    return [];
+  });
 
   const hasAuth = authKeys.some((provider) => {
     if (!config.authentication[provider]) {
@@ -311,82 +138,167 @@ function validateAuthentication(env: NodeJS.ProcessEnv): ValidationError[] {
   }
 
   return errors;
-}
+};
 
-async function validateInstalledTools(
-  env: NodeJS.ProcessEnv
-): Promise<ValidationError[]> {
-  const toolsDir = resolveToolsDir(config.paths.tools);
+const validateInstalledItems = async (
+  env: Readonly<NodeJS.ProcessEnv>,
+  directory: "tools/chatjs" | "plugins"
+): Promise<ValidationError[]> => {
+  const toolsDir = path.join(projectRoot, directory);
   const entries = await fs
     .readdir(toolsDir, { withFileTypes: true })
-    .catch((error: NodeJS.ErrnoException) => {
-      if (error.code === "ENOENT") {
+    .catch((error: unknown) => {
+      if (
+        error instanceof Error &&
+        "code" in error &&
+        error.code === "ENOENT"
+      ) {
         return [];
       }
       throw error;
     });
-  const errors: ValidationError[] = [];
-
-  for (const entry of entries) {
-    if (!entry.isDirectory() || entry.name.startsWith("_")) {
-      continue;
-    }
-
-    const toolPath = path.join(toolsDir, entry.name, "tool.ts");
-    const exists = await fs
-      .access(toolPath)
-      .then(() => true)
-      .catch(() => false);
-
-    if (!exists) {
-      continue;
-    }
-
-    const toolSource = await fs.readFile(toolPath, "utf8");
-    const mod = readStaticToolMetadata(toolSource);
-
-    for (const toolEnvVar of mod.toolEnvVars) {
-      const missing = getMissingRequirement(toolEnvVar, env);
-      if (missing) {
-        errors.push({
-          feature: `tools.${entry.name}`,
-          missing: [missing],
-        });
+  const toolErrors = await Promise.all(
+    entries.map(async (entry: Readonly<(typeof entries)[number]>) => {
+      if (!entry.isDirectory() || entry.name.startsWith("_")) {
+        return [];
       }
-    }
-  }
 
-  return errors;
-}
+      const toolPath = path.join(toolsDir, entry.name, "chatjs.json");
+      try {
+        await fs.access(toolPath);
+      } catch {
+        return [];
+      }
 
-function validateBaseUrl(env: NodeJS.ProcessEnv): ValidationError | null {
+      const toolSource = await fs.readFile(toolPath, "utf-8");
+      const mod = toolEnvironmentSchema.parse(JSON.parse(toolSource));
+      const missingRequirements = mod.envRequirements.flatMap(
+        (toolEnvVar: RequirementInput) => {
+          const missing = getMissingRequirement(toolEnvVar, env);
+
+          if (typeof missing !== "string" || missing === "") {
+            return [];
+          }
+          return [
+            {
+              feature: `${directory === "tools/chatjs" ? "tools" : "plugins"}.${entry.name}`,
+              missing: [missing],
+            },
+          ];
+        }
+      );
+      if (missingRequirements.length > 0) {
+        return missingRequirements;
+      }
+      const invalid = await validateInstalledEnvironment(
+        path.join(toolsDir, entry.name),
+        mod.environmentValidation,
+        env
+      );
+      return invalid.length > 0
+        ? [
+            {
+              feature: `${directory === "tools/chatjs" ? "tools" : "plugins"}.${entry.name}`,
+              missing: invalid,
+            },
+          ]
+        : [];
+    })
+  );
+
+  return toolErrors.flat();
+};
+
+const validateBaseUrl = (
+  env: Readonly<NodeJS.ProcessEnv>
+): ValidationError | null => {
   const isProduction = env.NODE_ENV === "production" || env.VERCEL === "1";
-  if (!isProduction) {
+  if (!isProduction || Boolean(env.APP_URL) || Boolean(env.VERCEL_URL)) {
     return null;
   }
-
-  const hasBaseUrl = !!(env.APP_URL || env.VERCEL_URL);
-  if (hasBaseUrl) {
-    return null;
-  }
-
   return {
     feature: "baseUrl",
     missing: [
       "APP_URL (for non-Vercel deployments) or VERCEL_URL (auto on Vercel)",
     ],
   };
-}
+};
 
-function checkGatewaySnapshot(): string | null {
-  if ((config.ai.gateway as GatewayType) === generatedForGateway) {
-    return null;
+const checkGatewaySnapshot = (): string | null => {
+  const configuredGateway: string = config.ai.gateway;
+  if (configuredGateway !== generatedForGateway) {
+    return formatGatewaySnapshotWarning(generatedForGateway, configuredGateway);
   }
-  return `models.generated.ts was built for "${generatedForGateway}" but config uses "${config.ai.gateway}". Run \`bun fetch:models\` to update the fallback snapshot.`;
-}
+  return null;
+};
 
-async function checkEnv(): Promise<void> {
-  const env = process.env;
+const validateDatabaseEnvironment = (
+  env: Readonly<NodeJS.ProcessEnv>
+): ValidationError[] => {
+  const databaseOptions = z.object(databaseEnvOptions).safeParse(env);
+  if (databaseOptions.success) {
+    return [];
+  }
+  return [
+    {
+      feature: "database",
+      missing: databaseOptions.error.issues.map(
+        (issue: {
+          readonly path: readonly PropertyKey[];
+          readonly message: string;
+        }) => `${issue.path.join(".")}: ${issue.message}`
+      ),
+    },
+  ];
+};
+
+const validateEveEnvironment = (
+  env: Readonly<NodeJS.ProcessEnv>
+): ValidationError[] => {
+  const eveOptions = z
+    .object(getEveRuntimeEnvOptions(env))
+    .safeParse(resolveEveEnvironment(env));
+  if (eveOptions.success) {
+    return [];
+  }
+  return [
+    {
+      feature: "Eve",
+      missing: eveOptions.error.issues.map(
+        (issue: {
+          readonly path: readonly PropertyKey[];
+          readonly message: string;
+        }) => `${issue.path.join(".")}: ${issue.message}`
+      ),
+    },
+  ];
+};
+
+const validateConfiguredEnvironment = (
+  env: Readonly<NodeJS.ProcessEnv>
+): ValidationError[] => {
+  const databaseErrors = validateDatabaseEnvironment(env);
+  const eveErrors = validateEveEnvironment(env);
+  const baseUrlError = validateBaseUrl(env);
+  const gatewayError = validateGatewayKey(env);
+  const storageError = validateStorage(env);
+  return [
+    ...eveErrors,
+    ...sandboxEnvRequirements.flatMap((requirement) => {
+      const missing = getMissingRequirement(requirement, env);
+      return typeof missing === "string" && missing !== ""
+        ? [{ feature: `sandbox (${sandboxId})`, missing: [missing] }]
+        : [];
+    }),
+    ...databaseErrors,
+    ...(baseUrlError ? [baseUrlError] : []),
+    ...(gatewayError ? [gatewayError] : []),
+    ...(storageError ? [storageError] : []),
+  ];
+};
+
+const checkEnv = async (): Promise<void> => {
+  const { env } = process;
   if (isPlaywrightTestEnvironment(env)) {
     console.log(
       "✅ Skipping optional environment validation in Playwright test mode"
@@ -396,36 +308,24 @@ async function checkEnv(): Promise<void> {
     return;
   }
 
-  const baseUrlError = validateBaseUrl(env);
-  const installedToolErrors = await validateInstalledTools(env);
+  const configuredErrors = validateConfiguredEnvironment(env);
+  const installedToolErrors = await validateInstalledItems(env, "tools/chatjs");
   const errors = [
-    ...(baseUrlError ? [baseUrlError] : []),
-    ...validateFeatures(env),
-    ...validateAiTools(env),
+    ...configuredErrors,
     ...validateAuthentication(env),
     ...installedToolErrors,
+    ...(await validateInstalledItems(env, "plugins")),
   ];
 
-  if (errors.length > 0) {
-    const message = errors
-      .map((e) => `  - ${e.feature}: ${e.missing.join(", ")}`)
-      .join("\n");
-
-    console.error(
-      `❌ Environment validation failed:\n${message}\n\nEither set the env vars or disable the feature in chat.config.ts`
-    );
-    process.exit(1);
+  if (reportEnvironmentFailure(errors)) {
+    process.exit(VALIDATION_FAILURE_EXIT_STATUS);
   }
+  reportEnvironmentSuccess(checkGatewaySnapshot());
+};
 
-  const snapshotWarning = checkGatewaySnapshot();
-  if (snapshotWarning) {
-    console.warn(`⚠️  ${snapshotWarning}`);
-  }
-
-  console.log("✅ Environment validation passed");
-}
-
-checkEnv().catch((error) => {
+try {
+  await checkEnv();
+} catch (error) {
   console.error(error);
-  process.exit(1);
-});
+  process.exit(VALIDATION_FAILURE_EXIT_STATUS);
+}

@@ -1,0 +1,480 @@
+import { setTimeout as delay } from "node:timers/promises";
+import { beforeEach, expect, it, vi } from "vitest";
+import type { MessageStreamEvent } from "eve/client";
+import { reconcileEveOwnerUsage } from "./reconcile-usage";
+import type { withManagedUsageReconciliation } from "@/lib/db/eve-billing";
+
+const mocks = vi.hoisted(() => ({
+  advanceChild: vi.fn(),
+  bindings: vi.fn(),
+  child: vi.fn(),
+  children: vi.fn(),
+  cursor: vi.fn(),
+  env: {
+    EVE_INTERNAL_ORIGIN: "http://worker.local",
+    VERCEL: "",
+    VERCEL_ENV: "preview",
+  },
+  events: new Map<string, MessageStreamEvent[]>(),
+  ingest: vi.fn(),
+  managed: vi.fn<typeof withManagedUsageReconciliation>(),
+  positions: vi.fn(),
+  read: vi.fn<(sessionId: string) => Promise<void>>(),
+  recover: vi.fn(),
+  retire: vi.fn(),
+  settleRetired: vi.fn(),
+  streamOptions: vi.fn(),
+}));
+vi.mock("../db/eve-subagents", () => ({
+  advanceEveSubagentUsageCursor: mocks.advanceChild,
+  getEveSubagent: mocks.child,
+  listEveSubagents: mocks.children,
+}));
+vi.mock("./deletion-lifecycle", () => ({
+  requireEveDeletionLifecycle: () => ({ retire: mocks.retire }),
+}));
+vi.mock("./retire-session", () => ({
+  retireEveSessionForDeletion: mocks.settleRetired,
+}));
+vi.mock("./recover-creations", () => ({ recoverEveCreations: mocks.recover }));
+vi.mock("../db/eve-queries", () => ({
+  listEveOwnerBindings: mocks.bindings,
+}));
+vi.mock("../db/eve-billing", () => ({
+  advanceEveUsageCursor: vi.fn(),
+  getEveUsageCursor: mocks.cursor,
+  withManagedUsageReconciliation: mocks.managed,
+}));
+vi.mock("../env", () => ({
+  env: mocks.env,
+}));
+vi.mock("./stream-positions", () => ({
+  getEveStreamPositions: mocks.positions,
+}));
+vi.mock("./server", () => ({ assertEveConfigured: vi.fn() }));
+vi.mock("./activity", () => ({ ingestEveActivity: vi.fn() }));
+vi.mock("./usage", () => ({ ingestEveUsage: mocks.ingest }));
+vi.mock("eve/client", () => ({
+  Client: class {
+    public sessions = {
+      attach: (
+        sessionId: string
+      ): {
+        stream: (options: unknown) => AsyncGenerator<MessageStreamEvent, void>;
+      } => ({
+        async *stream(
+          options: unknown
+        ): AsyncGenerator<MessageStreamEvent, void> {
+          mocks.streamOptions(options);
+          await mocks.read(sessionId);
+          yield* mocks.events.get(sessionId) ?? [];
+        },
+      }),
+    };
+  },
+}));
+
+beforeEach(() => {
+  vi.resetAllMocks();
+  mocks.events.clear();
+  mocks.ingest.mockResolvedValue(true);
+  mocks.env.VERCEL = "";
+  mocks.children.mockResolvedValue([]);
+  mocks.cursor.mockResolvedValue(0);
+  mocks.positions.mockResolvedValue(new Map());
+  mocks.bindings.mockResolvedValue(
+    Array.from({ length: 8 }, (_value, index) => ({
+      sessionId: String(index),
+      state: "bound",
+      usageStreamIndex: 0,
+    }))
+  );
+});
+
+it("keeps four reads busy when one conversation is slow", async () => {
+  const gates = Array.from({ length: 8 }, (): PromiseWithResolvers<void> =>
+    Promise.withResolvers()
+  );
+  mocks.read.mockImplementation(async (id) => {
+    await gates[Number(id)].promise;
+  });
+  const reconciliation = reconcileEveOwnerUsage("owner");
+  await expect.poll(() => mocks.read.mock.calls.length).toBe(4);
+  gates[1].resolve();
+  await expect.poll(() => mocks.read.mock.calls.length).toBe(5);
+  expect(
+    mocks.read.mock.calls.map(([id]: Readonly<[sessionId: string]>) => id)
+  ).toEqual(["0", "1", "2", "3", "4"]);
+  for (const gate of gates) {
+    gate.resolve();
+  }
+  await reconciliation;
+  expect(
+    mocks.read.mock.calls.map(([id]: Readonly<[sessionId: string]>) => id)
+  ).toEqual(["0", "1", "2", "3", "4", "5", "6", "7"]);
+});
+
+it("stops scheduling on failure and waits for in-flight billing reads", async () => {
+  const gates = Array.from({ length: 4 }, (): PromiseWithResolvers<void> =>
+    Promise.withResolvers()
+  );
+  mocks.read.mockImplementation(async (id) => {
+    await gates[Number(id)].promise;
+  });
+  let finished = false;
+  const reconciliation = reconcileEveOwnerUsage("owner").finally(() => {
+    finished = true;
+  });
+  const rejection = expect(reconciliation).rejects.toThrow("lost stream");
+  await expect.poll(() => mocks.read.mock.calls.length).toBe(4);
+  gates[1].reject(new Error("lost stream"));
+  // Let the failed worker observe the rejection before another read completes.
+  await delay(0);
+  expect(finished).toBe(false);
+  for (const gate of gates) {
+    gate.resolve();
+  }
+  await rejection;
+  expect(mocks.read).toHaveBeenCalledTimes(4);
+});
+
+it("rejects uncertain ownership bindings before reading any stream", async () => {
+  mocks.bindings.mockResolvedValue([
+    { sessionId: "owned", state: "bound" },
+    { sessionId: null, state: "uncertain" },
+  ]);
+  await expect(reconcileEveOwnerUsage("owner")).rejects.toThrow(
+    "Resolve uncertain session creation"
+  );
+  expect(mocks.read).not.toHaveBeenCalled();
+  expect(mocks.positions).not.toHaveBeenCalled();
+});
+
+it("skips only streams whose exact position matches the durable billing cursor", async () => {
+  mocks.bindings.mockResolvedValue([
+    { sessionId: "settled", state: "bound", usageStreamIndex: 10 },
+    { sessionId: "appended", state: "bound", usageStreamIndex: 10 },
+    { sessionId: "missing", state: "bound", usageStreamIndex: 0 },
+  ]);
+  mocks.positions.mockResolvedValue(
+    new Map([
+      ["settled", 10],
+      ["appended", 11],
+    ])
+  );
+  await reconcileEveOwnerUsage("owner");
+  expect(
+    mocks.read.mock.calls.map(([id]: Readonly<[sessionId: string]>) => id)
+  ).toEqual(["appended", "missing"]);
+});
+
+it("refuses a stream shorter than its durable billing cursor", async () => {
+  mocks.bindings.mockResolvedValue([
+    { sessionId: "rewound", state: "bound", usageStreamIndex: 10 },
+  ]);
+  mocks.positions.mockResolvedValue(new Map([["rewound", 9]]));
+  await expect(reconcileEveOwnerUsage("owner")).rejects.toThrow(
+    "shorter than its durable billing cursor"
+  );
+  expect(mocks.read).not.toHaveBeenCalled();
+});
+
+it("fails closed when authoritative stream positions cannot be read", async () => {
+  mocks.positions.mockRejectedValue(new Error("world unavailable"));
+  await expect(reconcileEveOwnerUsage("owner")).rejects.toThrow(
+    "world unavailable"
+  );
+  expect(mocks.read).not.toHaveBeenCalled();
+});
+it("finishes interrupted commands before selecting usage streams", async () => {
+  mocks.recover.mockImplementation(() => {
+    mocks.bindings.mockResolvedValue([
+      { sessionId: "recovered", state: "bound", usageStreamIndex: 0 },
+    ]);
+  });
+  await reconcileEveOwnerUsage("owner");
+  expect(mocks.recover).toHaveBeenCalledWith("owner");
+  expect(mocks.read).toHaveBeenCalledWith("recovered");
+});
+it("does not admit new work when recovery remains unavailable", async () => {
+  mocks.recover.mockRejectedValue(new Error("worker unavailable"));
+  await expect(reconcileEveOwnerUsage("owner")).rejects.toThrow(
+    "worker unavailable"
+  );
+  expect(mocks.bindings).not.toHaveBeenCalled();
+});
+it("resumes managed reads at the persisted billing cursor without following live work", async () => {
+  mocks.bindings.mockResolvedValue([
+    { sessionId: "session", state: "bound", usageStreamIndex: 17 },
+  ]);
+  mocks.cursor.mockResolvedValue(17);
+  await reconcileEveOwnerUsage("owner");
+  expect(mocks.streamOptions).toHaveBeenCalledWith(
+    expect.objectContaining({ follow: false, startIndex: 17 })
+  );
+});
+
+it("reconciles only the target during a managed owner cooldown, then sweeps when due", async () => {
+  mocks.env.VERCEL = "1";
+  mocks.managed.mockImplementationOnce(async (_owner, reconcile) => {
+    await reconcile(false, new Set());
+  });
+  await reconcileEveOwnerUsage("owner", "target");
+  expect(mocks.read.mock.calls).toEqual([["target"]]);
+  expect(mocks.bindings).not.toHaveBeenCalled();
+  mocks.read.mockClear();
+  mocks.managed.mockImplementationOnce(async (_owner, reconcile) => {
+    await reconcile(true, new Set());
+  });
+  await reconcileEveOwnerUsage("owner", "target");
+  expect(mocks.read).toHaveBeenCalledTimes(8);
+});
+
+it("does not bypass managed reconciliation failures", async () => {
+  mocks.env.VERCEL = "1";
+  mocks.managed.mockRejectedValue(new Error("Unpriced usage"));
+  await expect(reconcileEveOwnerUsage("owner", "target")).rejects.toThrow(
+    "Unpriced usage"
+  );
+});
+it("rate-limits unpriced history, then replays it when the managed sweep is due", async () => {
+  mocks.env.VERCEL = "1";
+  mocks.bindings.mockResolvedValue([
+    { sessionId: "failed-attempt", state: "bound", usageStreamIndex: 20 },
+  ]);
+  mocks.cursor.mockResolvedValue(20);
+  mocks.managed.mockImplementationOnce(async (_owner, reconcile) => {
+    await reconcile(false, new Set(["failed-attempt"]));
+  });
+  await reconcileEveOwnerUsage("owner", "failed-attempt");
+  expect(mocks.read).not.toHaveBeenCalled();
+  mocks.managed.mockImplementationOnce(async (_owner, reconcile) => {
+    await reconcile(true, new Set(["failed-attempt"]));
+  });
+  await reconcileEveOwnerUsage("owner", "failed-attempt");
+  expect(mocks.streamOptions).toHaveBeenCalledWith(
+    expect.objectContaining({ startIndex: 0 })
+  );
+});
+
+it("reconciles child tails even when the root cursor is unchanged and preserves original event identity", async () => {
+  mocks.bindings.mockResolvedValue([
+    { sessionId: "root", state: "bound", usageStreamIndex: 20 },
+  ]);
+  mocks.cursor.mockResolvedValue(20);
+  mocks.positions.mockResolvedValue(
+    new Map([
+      ["root", 20],
+      ["child", 3],
+    ])
+  );
+  mocks.children.mockResolvedValue([
+    {
+      rootSessionId: "root",
+      rootTurnId: "turn_4",
+      sessionId: "child",
+      usageStreamIndex: 2,
+    },
+  ]);
+  const event: MessageStreamEvent = {
+    data: {
+      code: "cancelled",
+      message: "Cancelled",
+      sequence: 0,
+      stepIndex: 0,
+      turnId: "turn_0",
+    },
+    meta: { at: "2026-09-28T00:00:00Z", id: "child-event" },
+    type: "step.failed",
+  };
+  mocks.events.set("child", [event]);
+  await reconcileEveOwnerUsage("owner");
+  expect(mocks.read.mock.calls).toEqual([["root"], ["child"]]);
+  expect(mocks.ingest).toHaveBeenCalledWith("owner", "child", event, {
+    sessionId: "root",
+    turnId: "turn_4",
+  });
+  expect(mocks.advanceChild).toHaveBeenCalledWith("owner", "child", 3);
+});
+
+it("admits work without advancing child progress when a completed child charge remains unknown", async () => {
+  mocks.bindings.mockResolvedValue([
+    { sessionId: "root", state: "bound", usageStreamIndex: 0 },
+  ]);
+  mocks.children.mockResolvedValue([
+    {
+      rootSessionId: "root",
+      rootTurnId: "turn_2",
+      sessionId: "child",
+      usageStreamIndex: 0,
+    },
+  ]);
+  mocks.events.set("child", [
+    {
+      data: {
+        result: {
+          kind: "tool-result",
+          callId: "unpriced-tool",
+          toolName: "paid-tool",
+          output: {
+            kind: "chatjs.tool-result",
+            version: 1,
+            status: "success",
+            output: null,
+            usage: {},
+          },
+        },
+        status: "completed",
+        sequence: 0,
+        stepIndex: 0,
+        turnId: "turn_0",
+      },
+      meta: { at: "2026-09-28T00:00:00Z", id: "unpriced" },
+      type: "action.result",
+    },
+  ]);
+  mocks.ingest.mockResolvedValue(false);
+  await expect(reconcileEveOwnerUsage("owner")).resolves.toBeUndefined();
+  expect(mocks.advanceChild).not.toHaveBeenCalled();
+});
+it("settles newly discovered descendants before admitting the next turn", async () => {
+  mocks.bindings.mockResolvedValue([
+    { sessionId: "root", state: "bound", usageStreamIndex: 0 },
+  ]);
+  mocks.children.mockResolvedValue([
+    {
+      rootSessionId: "root",
+      rootTurnId: "turn_1",
+      sessionId: "child",
+      usageStreamIndex: 0,
+    },
+  ]);
+  mocks.child.mockResolvedValue({
+    rootSessionId: "root",
+    rootTurnId: "turn_1",
+    sessionId: "grandchild",
+    usageStreamIndex: 0,
+  });
+  mocks.events.set("child", [
+    {
+      data: {
+        callId: "call",
+        streamPath: "/stream",
+        name: "worker",
+        sessionId: "grandchild",
+        turnId: "turn_0",
+      },
+      meta: { at: "2026-09-28T00:00:00Z", id: "delegation" },
+      type: "agent.started",
+    },
+  ]);
+  await reconcileEveOwnerUsage("owner");
+  expect(mocks.read.mock.calls).toEqual([["root"], ["child"], ["grandchild"]]);
+});
+it("skips settled research history with one owner-wide child lookup", async () => {
+  mocks.bindings.mockResolvedValue([
+    { sessionId: "root", state: "bound", usageStreamIndex: 20 },
+    { sessionId: "other", state: "bound", usageStreamIndex: 5 },
+  ]);
+  mocks.children.mockResolvedValue([
+    {
+      rootSessionId: "root",
+      rootTurnId: "turn",
+      sessionId: "child",
+      usageStreamIndex: 3,
+    },
+  ]);
+  mocks.positions.mockResolvedValue(
+    new Map([
+      ["root", 20],
+      ["other", 5],
+      ["child", 3],
+    ])
+  );
+  await reconcileEveOwnerUsage("owner");
+  expect(mocks.children).toHaveBeenCalledExactlyOnceWith("owner");
+  expect(mocks.positions).toHaveBeenCalledExactlyOnceWith([
+    "root",
+    "other",
+    "child",
+  ]);
+  expect(mocks.read).not.toHaveBeenCalled();
+});
+
+it("rejects a rewound child even when its parent is settled", async () => {
+  mocks.bindings.mockResolvedValue([
+    { sessionId: "root", state: "bound", usageStreamIndex: 20 },
+  ]);
+  mocks.children.mockResolvedValue([
+    {
+      rootSessionId: "root",
+      rootTurnId: "turn",
+      sessionId: "child",
+      usageStreamIndex: 3,
+    },
+  ]);
+  mocks.positions.mockResolvedValue(
+    new Map([
+      ["root", 20],
+      ["child", 2],
+    ])
+  );
+  await expect(reconcileEveOwnerUsage("owner")).rejects.toThrow(
+    "child stream is shorter"
+  );
+  expect(mocks.read).not.toHaveBeenCalled();
+});
+
+it.each([false, true])(
+  "admits unrelated work without rereading deletion history (retirement receipt exists: %s)",
+  async (alreadyRetired) => {
+    mocks.bindings.mockResolvedValue([
+      { sessionId: "deleting", state: "deleting", usageStreamIndex: 20 },
+      { sessionId: "active", state: "bound", usageStreamIndex: 0 },
+    ]);
+    mocks.children.mockResolvedValueOnce([
+      {
+        rootSessionId: "deleting",
+        sessionId: "purged-child",
+        usageStreamIndex: 3,
+      },
+    ]);
+    mocks.positions.mockResolvedValue(new Map([["active", 1]]));
+    mocks.retire.mockImplementation(
+      async (ids: readonly string[], settle: (id: string) => Promise<void>) => {
+        if (!alreadyRetired) {
+          await Promise.all(ids.map(settle));
+        }
+      }
+    );
+    await reconcileEveOwnerUsage("owner");
+    expect(mocks.retire).toHaveBeenCalledWith(
+      ["deleting"],
+      expect.any(Function)
+    );
+    if (alreadyRetired) {
+      expect(mocks.settleRetired).not.toHaveBeenCalled();
+    } else {
+      expect(mocks.settleRetired).toHaveBeenCalledExactlyOnceWith(
+        "owner",
+        "deleting"
+      );
+    }
+    expect(mocks.positions.mock.calls).toEqual([[["active"]], [[]]]);
+    expect(mocks.read.mock.calls).toEqual([["active"]]);
+  }
+);
+
+it("keeps new work fenced if deletion usage cannot be settled", async () => {
+  mocks.bindings.mockResolvedValue([
+    { sessionId: "deleting", state: "deleting", usageStreamIndex: 20 },
+  ]);
+  mocks.retire.mockRejectedValue(
+    new Error("Deletion usage remains unresolved")
+  );
+  await expect(reconcileEveOwnerUsage("owner")).rejects.toThrow(
+    "Deletion usage remains unresolved"
+  );
+  expect(mocks.positions).not.toHaveBeenCalled();
+  expect(mocks.read).not.toHaveBeenCalled();
+});

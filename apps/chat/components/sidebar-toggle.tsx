@@ -1,26 +1,25 @@
-import { PanelLeft } from "lucide-react";
-import type { ComponentProps } from "react";
+import { Hint } from "@/components/hint";
+import type { ComponentProps, JSX as ReactJSX } from "react";
 
-import { type SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { PanelLeft } from "lucide-react";
+
+import type { SidebarTrigger } from "@/components/ui/sidebar";
+import { useSidebar } from "@/components/ui/sidebar";
 
 import { Button } from "./ui/button";
 
-export function SidebarToggle({
+export const SidebarToggle = ({
   className,
   onClick,
   ...props
-}: ComponentProps<typeof SidebarTrigger>) {
+}: ComponentProps<typeof SidebarTrigger>): ReactJSX.Element => {
   const { toggleSidebar } = useSidebar();
 
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
+    <Hint
+      trigger={
         <Button
+          aria-label="Toggle sidebar"
           {...props}
           className={className}
           onClick={(event) => {
@@ -34,8 +33,10 @@ export function SidebarToggle({
         >
           <PanelLeft size={16} />
         </Button>
-      </TooltipTrigger>
-      <TooltipContent align="start">Toggle Sidebar</TooltipContent>
-    </Tooltip>
+      }
+      contentProps={{ align: "start" }}
+    >
+      Toggle Sidebar
+    </Hint>
   );
-}
+};

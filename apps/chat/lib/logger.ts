@@ -1,42 +1,28 @@
-import pino, { type Logger, stdTimeFunctions } from "pino";
+import pino, { stdTimeFunctions } from "pino";
+import type { Logger } from "pino";
+
 import userConfig from "@/chat.config";
 
 const appBinding = userConfig.appPrefix || userConfig.appName || "chatjs";
 
-// Prefer JSON in production; pretty in development.
-// We also add base bindings so child loggers inherit app metadata.
-const logger: Logger =
-  process.env.NODE_ENV === "production"
-    ? pino({
-        level: "info",
-        base: { app: appBinding },
-        timestamp: stdTimeFunctions.isoTime,
-        redact: {
-          paths: [
-            "password",
-            "headers.authorization",
-            "headers.cookie",
-            "cookies",
-            "token",
-          ],
-          remove: false,
-        },
-      })
-    : pino({
-        level: "debug",
-        base: { app: appBinding },
-        timestamp: stdTimeFunctions.isoTime,
-        transport: {
-          target: "pino-pretty",
-          options: {
-            colorize: true,
-            translateTime: "SYS:standard",
-            ignore: "pid,hostname",
-            singleLine: false,
-          },
-        },
-      });
+// Structured stdout works in Next.js and Eve's bundled development runtime.
+// Pino transports spawn a worker whose relative module path is not preserved
+// in Eve's authored-module snapshots.
+const logger: Logger = pino({
+  base: { app: appBinding },
+  level: process.env.NODE_ENV === "production" ? "info" : "debug",
+  redact: {
+    paths: [
+      "password",
+      "headers.authorization",
+      "headers.cookie",
+      "cookies",
+      "token",
+    ],
+    remove: false,
+  },
+  timestamp: stdTimeFunctions.isoTime,
+});
 
-export function createModuleLogger(moduleName: string): Logger {
-  return logger.child({ module: moduleName });
-}
+export const createModuleLogger = (moduleName: string): Logger =>
+  logger.child({ module: moduleName });

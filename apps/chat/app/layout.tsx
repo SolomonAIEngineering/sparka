@@ -1,47 +1,52 @@
-import { Analytics } from "@vercel/analytics/next";
-import { SpeedInsights } from "@vercel/speed-insights/next";
-import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import type { Metadata, Viewport } from "next";
+import type { ReadonlyReactNode } from "@/lib/readonly-react-node";
 import Script from "next/script";
+import { NuqsAdapter } from "nuqs/adapters/next/app";
 
 import "./globals.css";
-import { NuqsAdapter } from "nuqs/adapters/next/app";
+import components from "@/components.json";
+import { UiDirection } from "@/providers/ui-direction";
+import React from "react";
 import { Toaster } from "sonner";
-import { ElectronAuthHandler } from "@/components/electron-auth-handler";
+
 import { ThemeProvider } from "@/components/theme-provider";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { installedLayoutComponents } from "@/composition/generated/installed-layout";
 import { config } from "@/lib/config";
+import { cn } from "@/lib/utils";
+import { env } from "@/lib/env";
 
-export const metadata: Metadata = {
-  metadataBase: new URL(config.appUrl),
-  title: config.appTitle ?? config.appName,
+const metadata: Metadata = {
   description: config.appDescription,
+  metadataBase: new URL(config.appUrl),
   openGraph: {
-    siteName: config.appName,
-    url: config.appUrl,
-    title: config.appTitle ?? config.appName,
     description: config.appDescription,
+    siteName: config.appName,
+    title: config.appTitle ?? config.appName,
+    url: config.appUrl,
   },
+  title: config.appTitle ?? config.appName,
 };
 
-export const viewport = {
-  maximumScale: 1, // Disable auto-zoom on mobile Safari
-  interactiveWidget: "resizes-content" as const,
-};
+const viewport = {
+  interactiveWidget: "resizes-content",
+  // Disable auto-zoom on mobile Safari
+  maximumScale: 1,
+} satisfies Viewport;
 
 const geist = Geist({
-  subsets: ["latin"],
   display: "swap",
-  variable: "--font-geist",
+  subsets: ["latin"],
+  variable: "--font-sans",
 });
 
 const geistMono = Geist_Mono({
-  subsets: ["latin"],
   display: "swap",
-  variable: "--font-geist-mono",
+  subsets: ["latin"],
+  variable: "--font-mono",
 });
 
-const LIGHT_THEME_COLOR = "hsl(0 0% 100%)";
-const DARK_THEME_COLOR = "hsl(240deg 10% 3.92%)";
 const THEME_COLOR_SCRIPT = `\
 (function() {
   var html = document.documentElement;
@@ -52,46 +57,47 @@ const THEME_COLOR_SCRIPT = `\
     document.head.appendChild(meta);
   }
   function updateThemeColor() {
-    var isDark = html.classList.contains('dark');
-    meta.setAttribute('content', isDark ? '${DARK_THEME_COLOR}' : '${LIGHT_THEME_COLOR}');
+    meta.setAttribute('content', getComputedStyle(html).getPropertyValue('--background').trim());
   }
   var observer = new MutationObserver(updateThemeColor);
   observer.observe(html, { attributes: true, attributeFilter: ['class'] });
   updateThemeColor();
 })();`;
 
-export default async function RootLayout({
+const RootLayout = ({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
-  return (
-    <html
-      className={`${geist.variable} ${geistMono.variable}`}
-      // `next-themes` injects an extra classname to the body element to avoid
-      // visual flicker before hydration. Hence the `suppressHydrationWarning`
-      // prop is necessary to avoid the React hydration mismatch warning.
-      // https://github.com/pacocoursey/next-themes?tab=readme-ov-file#with-app
-      lang="en"
-      suppressHydrationWarning
-    >
-      <head>
-        <Script id="theme-color-script" strategy="beforeInteractive">
-          {THEME_COLOR_SCRIPT}
-        </Script>
-        {process.env.NODE_ENV === "production" ? null : (
-          <Script
-            src="https://unpkg.com/react-scan/dist/auto.global.js"
-            strategy="beforeInteractive"
-          />
-        )}
-      </head>
-      <body className="antialiased">
-        <ElectronAuthHandler />
+}: {
+  readonly children: ReadonlyReactNode;
+}): React.JSX.Element => (
+  <html
+    className={cn(geist.variable, geistMono.variable, "font-sans")}
+    // `next-themes` injects an extra classname to the body element to avoid
+    // visual flicker before hydration. Hence the `suppressHydrationWarning`
+    // prop is necessary to avoid the React hydration mismatch warning.
+    // https://github.com/pacocoursey/next-themes?tab=readme-ov-file#with-app
+    dir={components.rtl ? "rtl" : "ltr"}
+    lang="en"
+    suppressHydrationWarning
+  >
+    <head>
+      <Script id="theme-color-script" strategy="beforeInteractive">
+        {THEME_COLOR_SCRIPT}
+      </Script>
+      {process.env.NODE_ENV === "development" &&
+      (process.env.PLAYWRIGHT ?? "") === "" &&
+      env.NEXT_PUBLIC_REACT_SCAN === "1" ? (
         <Script
-          src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"
-          strategy="afterInteractive"
+          src="https://unpkg.com/react-scan/dist/auto.global.js"
+          strategy="beforeInteractive"
         />
+      ) : null}
+    </head>
+    <body className="antialiased">
+      <Script
+        src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"
+        strategy="afterInteractive"
+      />
+      <UiDirection direction={components.rtl ? "rtl" : "ltr"}>
         <NuqsAdapter>
           <ThemeProvider
             attribute="class"
@@ -99,13 +105,29 @@ export default async function RootLayout({
             disableTransitionOnChange
             enableSystem
           >
-            <Toaster position="top-center" />
-            {children}
+            <TooltipProvider>
+              <Toaster position="top-center" />
+              {children}
+            </TooltipProvider>
           </ThemeProvider>
         </NuqsAdapter>
-        <Analytics />
-        <SpeedInsights />
-      </body>
-    </html>
-  );
-}
+      </UiDirection>
+      {installedLayoutComponents.map(
+        ({
+          id,
+          Component,
+        }: {
+          readonly id: string;
+          readonly Component: React.JSXElementConstructor<
+            Readonly<React.Attributes>
+          >;
+        }) => (
+          <Component key={id} />
+        )
+      )}
+    </body>
+  </html>
+);
+
+export { metadata, viewport };
+export default RootLayout;

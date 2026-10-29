@@ -1,29 +1,35 @@
 "use client";
-import { useMounted } from "@/hooks/use-mounted";
-import { cn } from "@/lib/utils";
+
+import React from "react";
+
 import { Skeleton } from "./ui/skeleton";
 
-export function WithSkeleton({
+import { cn } from "@/lib/utils";
+
+import { useMounted } from "@/hooks/use-mounted";
+
+export const WithSkeleton = ({
   children,
   className,
   isLoading,
   ...props
 }: React.ComponentProps<"div"> & {
-  isLoading?: boolean;
-}) {
+  readonly isLoading?: boolean;
+}): React.JSX.Element => {
   const mounted = useMounted();
 
   return (
     <div className={cn("relative w-fit", className)} {...props}>
       {children}
-
-      {(!mounted || isLoading) && (
+      {!mounted || isLoading === true ? (
         <>
-          <div className={cn("absolute inset-0 bg-background", className)} />
+          <div className={cn("bg-background absolute inset-0", className)} />
 
           <Skeleton className={cn("absolute inset-0", className)} />
         </>
+      ) : (
+        isLoading
       )}
     </div>
   );
-}
+};

@@ -1,48 +1,49 @@
-import { electron } from "@better-auth/electron";
+import { isNonEmptyString } from "@/lib/is-non-empty-string";
+
+import { authSessionOptions } from "./auth-session-options";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { nextCookies } from "better-auth/next-js";
-import { lastLoginMethod } from "better-auth/plugins";
 import { env } from "@/lib/env";
+import { lastLoginMethod } from "better-auth/plugins";
+import { nextCookies } from "better-auth/next-js";
+
 import { config } from "./config";
 import { db } from "./db/client";
 import { schema } from "./db/schema";
-import {
-  ELECTRON_AUTH_CLIENT_ID,
-  ELECTRON_AUTH_COOKIE_PREFIX,
-  ELECTRON_TRUSTED_ORIGINS,
-} from "./electron-auth";
+import { installedAuth } from "@/composition/generated/installed-auth";
+import { getBaseUrl } from "./url";
 
-type BetterAuthOptions = Parameters<typeof betterAuth>[0];
-type BetterAuthPlugin = NonNullable<BetterAuthOptions["plugins"]>[number];
+let baseUrl = env.APP_URL;
+if (typeof baseUrl !== "string" || baseUrl === "") {
+  baseUrl =
+    process.env.VERCEL_ENV === "production" ? config.appUrl : getBaseUrl();
+}
 
-const electronAuthPlugin = electron({
-  clientID: ELECTRON_AUTH_CLIENT_ID,
-  cookiePrefix: ELECTRON_AUTH_COOKIE_PREFIX,
-}) as unknown as BetterAuthPlugin;
+interface SocialProviderCredentials {
+  clientId: string;
+  clientSecret: string;
+}
 
 export const auth = betterAuth({
+  baseURL: baseUrl,
   database: drizzleAdapter(db, {
     provider: "pg",
     schema,
   }),
-  trustedOrigins: [
-    "http://localhost:3000",
-    // Vercel URL for preview branches
-    ...(env.VERCEL_URL ? [`https://${env.VERCEL_URL}`] : []),
-    config.appUrl,
-    ...(config.desktopApp.enabled ? ELECTRON_TRUSTED_ORIGINS : []),
-  ],
+  plugins: [lastLoginMethod(), nextCookies(), ...installedAuth.plugins],
   secret: env.AUTH_SECRET,
 
-  session: {
-    cookieCache: {
-      enabled: true,
-      maxAge: 60 * 5, // 5 minutes - reduces database queries for session validation
-    },
-  },
+  ...authSessionOptions({
+    baseUrl,
+    databaseUrl: env.DATABASE_URL,
+    development: env.NODE_ENV === "development",
+  }),
 
-  socialProviders: (() => {
+  socialProviders: ((): {
+    readonly github: SocialProviderCredentials | undefined;
+    readonly google: SocialProviderCredentials | undefined;
+    readonly vercel: SocialProviderCredentials | undefined;
+  } => {
     const googleId = env.AUTH_GOOGLE_ID;
     const googleSecret = env.AUTH_GOOGLE_SECRET;
     const githubId = env.AUTH_GITHUB_ID;
@@ -74,12 +75,14 @@ export const auth = betterAuth({
         ? { clientId: vercelId, clientSecret: vercelSecret }
         : undefined;
 
-    return { google, github, vercel } as const;
+    return { github, google, vercel };
   })(),
-  plugins: [
-    lastLoginMethod(),
-    nextCookies(),
-    ...(config.desktopApp.enabled ? [electronAuthPlugin] : []),
+  trustedOrigins: [
+    baseUrl,
+    // Vercel URL for preview branches
+    ...(isNonEmptyString(env.VERCEL_URL) ? [`https://${env.VERCEL_URL}`] : []),
+    config.appUrl,
+    ...installedAuth.trustedOrigins,
   ],
 });
 

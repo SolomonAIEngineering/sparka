@@ -1,0 +1,63 @@
+import "./presentation.css";
+import React from "react";
+
+const Caption = ({
+  children,
+  opacity,
+}: {
+  readonly children: string;
+  readonly opacity: number;
+}): React.JSX.Element => (
+  <div className="captionPause" style={{ opacity }}>
+    <span>{children}</span>
+  </div>
+);
+
+const Pointer = ({
+  x,
+  y,
+}: {
+  readonly x: number;
+  readonly y: number;
+}): React.JSX.Element => (
+  <svg
+    aria-hidden="true"
+    className="cursor"
+    viewBox="0 0 26 32"
+    style={{ left: x, top: y }}
+  >
+    <path
+      d="M3 2 L3 25 L9 20 L14 30 L19 27 L14 17 L23 16 Z"
+      fill="#17283e"
+      stroke="white"
+      strokeWidth={2}
+    />
+  </svg>
+);
+
+const ClickPulse = ({
+  age,
+  x,
+  y,
+}: {
+  readonly age: number;
+  readonly x: number;
+  readonly y: number;
+}): React.JSX.Element | null => {
+  if (age >= 0 && age < 0.5) {
+    return (
+      <div
+        className="clickPulse"
+        style={{
+          left: x,
+          opacity: 1 - age / 0.5,
+          top: y,
+          transform: `translate(-50%,-50%) scale(${0.6 + age * 3})`,
+        }}
+      />
+    );
+  }
+  return null;
+};
+
+export { Caption, ClickPulse, Pointer };

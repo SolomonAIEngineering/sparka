@@ -1,0 +1,174 @@
+---
+title: Authoring Tools
+description: Author native EVE tools and publish them as shadcn registry items
+---
+
+Author tools as real TypeScript files that you can import, type-check, and test. Canonical implementations live in `packages/registry/src/tools/<id>/`. The app consumes installed copies through local imports.
+
+## Native execution
+
+Every installed or custom tool uses EVE's `defineTool()`. EVE owns input validation, execution, approvals, and model-output policies. Use the shared receipt helper when your tool reports costs:
+
+```ts
+import { defineTool } from "eve/tools";
+import { z } from "zod";
+
+import { toolResultToModelOutput } from "@/lib/eve/tool-model-output";
+import { executeWithToolUsage } from "@/lib/eve/tool-usage";
+
+export const wordCount = defineTool({
+  description: "Count words in text",
+  inputSchema: z.object({ text: z.string() }),
+  execute: ({ text }, context) =>
+    executeWithToolUsage(context, (usage) => {
+      usage.addCostUsd(0);
+      return { words: text.trim() ? text.trim().split(/\s+/).length : 0 };
+    }),
+  toModelOutput: toolResultToModelOutput,
+});
+```
+
+`executeWithToolUsage` accepts JSON-compatible outputs. A result explicitly has `status: "success"` and a typed `output`, or `status: "error"`, a sanitized error, and `output: null`. The common `toolResultToModelOutput` projection keeps usage and progress out of model context. Renderers receive the visible output after receipt validation.
+
+Call `usage.addCostUsd()` for known provider costs in US dollars. Report `0` for explicitly free work. An omitted report leaves the cost unknown. Call `usage.markUnknown()` when any part of the total cannot be determined, even if you already reported a known subtotal. Unexpected exceptions propagate unchanged to EVE, including authorization signals. Cancellation also propagates. Pass EVE's `context.abortSignal` to provider calls so they can cooperate with cancellation.
+
+Use `return usage.fail()` only for an expected domain failure that should produce a sanitized error receipt with reported costs—for example, storage failing after a paid generation. This is a returned application result, so EVE records a completed action. Throwing instead produces EVE's native failed action and does not produce a final cost receipt. Do not wrap an entire tool or native authorization calls in `.catch(usage.fail)`.
+
+`executeWithToolProgress` uses the same receipts and accumulator for streaming executions. Its callback can publish intermediate output and JSON progress. Search uses `executeWithResearchProgress` to collect its progress events. The native research workflow yields durable phase/topic snapshots with the same receipt shape. Research schemas are kept outside the generic receipt contract.
+
+EVE may interrupt execution before a final receipt settles. These helpers do not guarantee accounting for every external request or prevent duplicate provider work. Use provider idempotency and reconciliation where required. Workflow tools require their own integration with durable workflow steps.
+
+## Renderer
+
+Export a renderer built with `defineToolRenderer`. It validates persisted input and output against your schemas before calling your component. Renderer props are inferred from those schemas, without importing the server tool:
+
+```tsx
+"use client";
+
+import { z } from "zod";
+import { defineToolRenderer } from "@/lib/ai/define-tool-renderer";
+
+export const WordCountRenderer = defineToolRenderer({
+  inputSchema: z.object({ text: z.string() }),
+  outputSchema: z.object({ words: z.number() }),
+  render: ({ tool }) =>
+    tool.state === "output-available" ? (
+      <p>{tool.output.words} words</p>
+    ) : (
+      <p>Counting words…</p>
+    ),
+});
+```
+
+Keep shared schemas in `schemas.ts`. For a separate view component, use `ToolRendererProps<typeof inputSchema, typeof outputSchema>` from the same helper module. The validated renderer handles malformed results, approvals, denied requests, and errors.
+
+## Item metadata
+
+Declare standard shadcn files and dependencies in `packages/registry/registry.ts`:
+
+```json
+{
+  "contractVersion": 1,
+  "kind": "tool",
+  "id": "word-count",
+  "tools": [
+    { "toolExport": "wordCount", "rendererExport": "WordCountRenderer" }
+  ],
+  "envRequirements": []
+}
+```
+
+`contractVersion: 1` is the single supported native EVE descriptor format. It does not select an execution implementation. The same metadata is emitted as `meta.chatjs` in the registry item and as an installed `tools/chatjs/word-count/chatjs.json` descriptor.
+
+A registry item can register several native tools through its `tools` array. Each export comes from the item’s `tool.ts`, and optional renderers come from `renderer.tsx`. Registration names must be unique across all installed items. Provider slots register exactly one tool.
+
+Document bundles also declare `documentKind` (`text`, `code`, or `sheet`) and export `documentUi` from `document.tsx`. The CLI generates the installed editor registry. Use `registryDependencies` to share `read-document` across bundles.
+
+Items target files under `~/tools/chatjs/<id>/`. Declare npm packages in `dependencies` or `devDependencies`, and shared registry items in `registryDependencies`. EVE and the ChatJS receipt/renderer helpers are supplied by the host app.
+
+The `saved-code-execution` bundle requires code documents and a `codeExecution` provider exporting a typed `CodeExecutor` from `lib/eve/code-executor.ts`. Declare its export name with `codeExecutorExport: "executeCode"` in the descriptor. Both native tools call this shared operation with exact `{ code, language, title }` input and the current call's session, call ID, and abort signal. The operation owns sandbox lifecycle and returns one ChatJS usage receipt containing `{ message, chart }`. It does not receive EVE approval or token-access functions, and does not invoke another tool definition. Authorization belongs to each native entry point; the saved-document entry point additionally checks document ownership. No older provider contract is adapted.
+
+`chat-js add saved-code-execution` reuses an installed compatible executor or installs `code-execution`. The generic executor requires sandbox infrastructure: select `--sandbox-provider vercel` or `--sandbox-provider daytona` if the app has no sandbox provider yet. An incompatible selected executor produces an error before installation. Its chart packages and Run UI are installed with the execution bundles.
+
+Keep credential reads and format validation in a server-only module owned by your tool, such as `my-tool-env.ts`. Read credentials when the tool runs. Do not add tool credentials to the core `lib/env-schema.ts` or import them into configuration schemas used by client code. Two tools can read the same environment variable independently.
+
+For the shared installation checklist and `check-env` command, declare credential alternatives in the typed metadata:
+
+```ts
+const envRequirements = [{ options: [["FIRECRAWL_API_KEY"]] }];
+```
+
+Every outer requirement must be satisfied. Within a requirement, `options` lists alternatives, and each alternative lists variables needed together. The app validates these requirements without evaluating remote source.
+
+## Configuration contributions
+
+A tool can declare `"config": { "key": "myTool" }` in its descriptor and install `configuration-schema.ts` alongside `tool.ts`. Export a Zod schema named `configSchema`. Its input becomes `ai.tools.myTool` in the app's single `chat.config.ts`, and its output becomes the parsed runtime configuration. Supply defaults for omitted fields and for the omitted object:
+
+```ts title="configuration-schema.ts"
+import { z } from "zod";
+import { languageModelSchema, modelRoles } from "@/lib/config-models";
+
+const configSchema = z
+  .strictObject({
+    model: languageModelSchema.default(modelRoles.balanced),
+  })
+  .prefault({});
+
+export { configSchema };
+```
+
+Use `modelRoles.smart`, `.balanced` or `.fast` for language models. Image and video roles are optional and require the corresponding gateway capability. These modules must be pure and safe to import in the browser: do not import runtime `config`, credentials, server SDKs or the tool implementation. The CLI generates typed imports without executing the module during installation. It rejects duplicate keys and the reserved core key `followupSuggestions`.
+
+Document bundles may also declare `documentActions: true` and export `documentAssistantActions` from `assistant-actions.ts`. This function returns `DocumentAssistantAction[]` from `@/lib/eve/document-contracts`. The generated document action registry keeps each bundle's prompts and model selection with its implementation.
+
+## Feature selections
+
+An optional `slot` selects a product feature independently of the execution contract. Supported values are `webSearch`, `codeExecution`, `retrieveUrl`, `generateImage`, and `generateVideo`. The CLI registers that item under the selected feature name and applies its existing feature toggle. Only one item can occupy each selection.
+
+A slot does not impose an input schema, output schema, or renderer. For example, a code-execution item can accept `{ command: string }` and return `{ stdout: string, exitCode: number }`. The saved-document runner separately validates that an installed executor supports its saved-code input and output. A renderer is optional.
+
+Deep research exposes the installed search definition directly to a native EVE researcher. EVE owns its input/output validation, approvals, authorization, progress, and cancellation. Child model events and search receipts are attributed once to the originating root turn. The outer research receipt reports zero additional cost, so it does not charge the child usage again.
+
+Saved-code execution still uses restricted internal function composition under its parent call. It retains the parent's `callId` and `toolName`, without creating a separate EVE action. This helper rejects approval policies, `availableInSubagents: false`, and output schemas requiring EVE validation. Native `getToken` and `requireAuth` are unavailable inside it. Invoke tools needing those capabilities directly through EVE.
+
+## Installable workflows
+
+`chat-js add deep-research` installs the research workflow, subagents, prompts, configuration, and progress renderer. It also installs text documents and reuses your selected search provider, or installs Tavily when none is selected. Override research policy under `ai.tools.deepResearch` in `chat.config.ts` when needed.
+
+Workflow registrations declare `workflow: true` alongside their `toolExport` and optional `rendererExport`. The bundle installs an ordinary EVE default export at `agent/tools/<toolExport>.ts`; its `tool.ts` re-exports that definition by name for type inference. The CLI keeps workflows out of the dynamic tool set and generates type-only registrations for their UI. EVE discovers and executes the static entry point itself.
+
+A bundle can declare `availabilityExport`, naming a predicate in `availability.ts`. The generated availability registry filters model exposure. Keep an execution guard in the workflow's preparation step as well. An unavailable tool must not rely on model filtering alone for authorization.
+
+To remove research, delete `tools/chatjs/deep-research`, `agent/tools/deepResearch.ts`, and the `researchPlanner`, `researcher`, `researchCompressor`, and `researchWriter` directories under `agent/subagents`, then run `chat-js sync`. These are installed source files, including the native EVE entry points.
+
+Renderers can declare an `updateSchema` and `renderProgress` component. ChatJS validates receipt updates before rendering them and retains valid progress when the receipt reports an error.
+
+## Native services and custom tools
+
+Tools receive EVE's native context. Import only the ChatJS services your implementation needs: authorized file upload, model access and pricing, image context, or durable sandbox ownership. The official media and sandbox sources show these integrations. Services are not supplied through a second optional execution-context object.
+
+Keep provider credentials and SDK dependencies in the installed integration. Tools accessing private user data must authorize that access using the native session identity. Both official and third-party tools use the same registration and accounting contract.
+
+For local custom tools, add native definitions to `composition/custom/custom-tools.ts` with `defineToolSet` from `@/lib/eve/tool-types`. This checks each definition without widening its concrete input/output types. Add renderers in `custom-ui.ts`. The generated registry combines installed and custom tools and rejects duplicate names.
+
+## Build and verify
+
+```bash
+bun run --cwd packages/registry test:types
+bun run --cwd packages/registry test:unit
+bun run --cwd packages/registry build
+```
+
+The build script emits `registry.json`, then pinned shadcn reads the sources and generates `dist/r/*.json`. Publish those generated files from your registry endpoint.
+
+Install the item into an independent ChatJS app and type-check it. Exercise it through an EVE worker to verify durable execution, rendering, cancellation, and usage where relevant:
+
+```bash
+npx @chat-js/cli@latest add https://example.com/r/word-count.json
+```
+
+## Related
+
+- [Tool Registry](./overview) for ownership and namespaces
+- [Adding Tools](./install) for installation and sync
+- [Tool Part](../cookbook/tool-part) for rendering tool results

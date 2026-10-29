@@ -1,0 +1,23 @@
+{
+  "extends": "../../apps/chat/tsconfig.json",
+  "compilerOptions": {
+    "types": ["node", "next", "bun"],
+    "allowImportingTsExtensions": true,
+    "paths": {
+      "@/*": ["../../apps/chat/*"],
+      "drizzle-orm": ["../../apps/chat/node_modules/drizzle-orm"],
+      "drizzle-orm/*": ["../../apps/chat/node_modules/drizzle-orm/*"]
+    }
+  },
+  "include": [
+    "registry.ts",
+    "metadata.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "../../apps/chat/types/**/*.d.ts",
+    "visual/**/*.ts",
+    "visual/**/*.tsx",
+    "test/**/*.test.ts"
+  ],
+  "exclude": ["**/*.radix.tsx", "node_modules", "dist"]
+}

@@ -1,17 +1,26 @@
 #!/usr/bin/env bun
-import { createHash } from "node:crypto";
+import { cp, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import {
-  cp,
-  mkdtemp,
-  readdir,
-  readFile,
-  rm,
-  stat,
-  writeFile,
-} from "node:fs/promises";
+  normalizeScaffoldContent,
+  shouldCopyChatAppFile,
+  shouldCopyElectronFile,
+} from "../packages/cli/src/helpers/scaffold-content";
+import { collectSnapshot } from "./sync-template-snapshot";
+import { copyDevelopmentSupervisor } from "../packages/cli/src/helpers/copy-development-supervisor";
+import { parseJsonObject } from "../packages/cli/src/helpers/json-object";
+import { parsePackageJson } from "../packages/cli/src/helpers/package-manifest";
+import path from "node:path";
+import { resolvePackageDirectory } from "../packages/cli/src/helpers/resolve-package-directory";
 import { tmpdir } from "node:os";
-import { join, relative, resolve, sep } from "node:path";
+import { vendorPatchedPackage } from "../packages/cli/src/helpers/vendor-patched-package";
 
+const join = (...segments: readonly string[]): string => path.join(...segments);
+const relative = (from: string, to: string): string => path.relative(from, to);
+const resolve = (...segments: readonly string[]): string =>
+  path.resolve(...segments);
+const MANIFEST_INDENT_SPACES = 2;
+const EMPTY_IMPORT_LIST_LENGTH = 0;
+const FAILURE_EXIT_STATUS = 1;
 const rootDir = resolve(import.meta.dir, "..");
 const isCheck = process.argv.includes("--check");
 const rootPackageJsonPath = join(rootDir, "package.json");
@@ -32,78 +41,17 @@ const electronTemplateDir = join(
 
 // ─── chat-app filter ────────────────────────────────────────────────────────
 
-const EXCLUDED_SEGMENTS = new Set([
-  "node_modules",
-  ".next",
-  ".turbo",
-  "playwright",
-  "playwright-report",
-  "test-results",
-  "blob-report",
-  "dist",
-  "build",
-]);
-
-const EXCLUDED_FILES = new Set([
-  ".env.local",
-  ".DS_Store",
-  "bun.lock",
-  "bun.lockb",
-]);
-
-function shouldCopyFilePath(filePath: string): boolean {
-  const rel = relative(sourceDir, filePath);
-  if (!rel || rel.startsWith("..")) {
-    return true;
-  }
-  const segments = rel.split(sep);
-  if (segments.some((segment) => EXCLUDED_SEGMENTS.has(segment))) {
-    return false;
-  }
-  const fileName = segments.at(-1);
-  if (fileName && EXCLUDED_FILES.has(fileName)) {
-    return false;
-  }
-  return true;
-}
-
-// ─── electron filter ─────────────────────────────────────────────────────────
-
-const ELECTRON_EXCLUDED_SEGMENTS = new Set([
-  "node_modules",
-  ".turbo",
-  "build",
-  "dist",
-  "release",
-]);
-
-const ELECTRON_EXCLUDED_FILES = new Set([
-  ".DS_Store",
-  "bun.lock",
-  "bun.lockb",
-  "branding.json",
-]);
-
-function shouldCopyElectronFilePath(filePath: string): boolean {
-  const rel = relative(electronSourceDir, filePath);
-  if (!rel || rel.startsWith("..")) {
-    return true;
-  }
-  const segments = rel.split(sep);
-  if (segments.some((segment) => ELECTRON_EXCLUDED_SEGMENTS.has(segment))) {
-    return false;
-  }
-  const fileName = segments.at(-1);
-  if (fileName && ELECTRON_EXCLUDED_FILES.has(fileName)) {
-    return false;
-  }
-  return true;
-}
+const shouldCopyFilePath = (filePath: string): boolean =>
+  shouldCopyChatAppFile(relative(sourceDir, filePath));
 
 /** Files removed from the template after copying (relative to destination). */
 const TEMPLATE_REMOVED_FILES = [
   "components/github-link.tsx",
   "components/docs-link.tsx",
+  // This reference-app test requires both built-in tools, which scaffolds may omit.
+  "components/part/tool-part.test.tsx",
+  // This test covers the reference app's Vercel adapter; scaffolds select their own.
+  "lib/storage-provider.test.ts",
 ];
 
 /** Import lines stripped from template files after copying. */
@@ -112,123 +60,164 @@ const TEMPLATE_STRIPPED_IMPORTS = [
   'import { GitHubLink } from "@/components/github-link";',
 ];
 
-async function applyTemplateTransforms(destination: string): Promise<void> {
+const removeTemplateReferences = async (destination: string): Promise<void> => {
   // Delete excluded files
   await Promise.all(
-    TEMPLATE_REMOVED_FILES.map((file) =>
-      rm(join(destination, file), { force: true })
-    )
+    TEMPLATE_REMOVED_FILES.map(async (file): Promise<void> => {
+      await rm(join(destination, file), { force: true });
+    })
   );
 
   // Strip imports that reference removed files
-  if (TEMPLATE_STRIPPED_IMPORTS.length > 0) {
+  if (TEMPLATE_STRIPPED_IMPORTS.length > EMPTY_IMPORT_LIST_LENGTH) {
     const headerPath = join(destination, "components", "header-actions.tsx");
-    let content = await readFile(headerPath, "utf8");
+    let content = await readFile(headerPath, "utf-8");
     for (const imp of TEMPLATE_STRIPPED_IMPORTS) {
       content = content.replace(`${imp}\n`, "");
     }
     // Remove JSX usage of the stripped components
-    content = content.replace(/\s*<DocsLink \/>/g, "");
-    content = content.replace(/\s*<GitHubLink \/>/g, "");
+    content = content.replaceAll(/\s*<DocsLink \/>/gu, "");
+    content = content.replaceAll(/\s*<GitHubLink \/>/gu, "");
     await writeFile(headerPath, content);
   }
+};
 
-  // Replace monorepo-aware @source paths with single-app path in globals.css
-  const globalsCssPath = join(destination, "app", "globals.css");
-  let globalsCss = await readFile(globalsCssPath, "utf8");
+const rewriteTemplateStyles = async (destination: string): Promise<void> => {
+  // Replace monorepo-aware @source paths with single-app path in chatjs.css
+  const globalsCssPath = join(destination, "app", "chatjs.css");
+  let globalsCss = await readFile(globalsCssPath, "utf-8");
   globalsCss = globalsCss.replace(
-    /@source "\.\.\/node_modules\/streamdown\/dist\/\*\.js";\n@source "\.\.\/\.\.\/\.\.\/node_modules\/streamdown\/dist\/\*\.js";/,
+    /@source "\.\.\/node_modules\/streamdown\/dist\/\*\.js";\n@source "\.\.\/\.\.\/\.\.\/node_modules\/streamdown\/dist\/\*\.js";/u,
     '@source "../node_modules/streamdown/dist/*.js";'
   );
   await writeFile(globalsCssPath, globalsCss);
+};
 
-  // Stamp the template with the monorepo-controlled Bun version at build time.
-  const rootPackageJson = JSON.parse(
-    await readFile(rootPackageJsonPath, "utf8")
-  ) as { packageManager?: string };
+const stampTemplateManifest = async (destination: string): Promise<void> => {
+  const rootPackageJson = parsePackageJson(
+    await readFile(rootPackageJsonPath, "utf-8")
+  );
   const packageJsonPath = join(destination, "package.json");
-  const packageJson = JSON.parse(await readFile(packageJsonPath, "utf8")) as {
-    packageManager?: string;
-  };
+  const packageJson = parseJsonObject(
+    await readFile(packageJsonPath, "utf-8"),
+    "Template package.json"
+  );
   packageJson.packageManager = rootPackageJson.packageManager;
-  await writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
-}
+  await writeFile(
+    packageJsonPath,
+    `${JSON.stringify(packageJson, null, MANIFEST_INDENT_SPACES)}\n`
+  );
+};
 
-async function applyElectronTemplateTransforms(
+const applyTemplateTransforms = async (destination: string): Promise<void> => {
+  await copyDevelopmentSupervisor(rootDir, destination);
+  await normalizeScaffoldContent(destination);
+  await removeTemplateReferences(destination);
+  await rewriteTemplateStyles(destination);
+  await vendorPatchedPackage({
+    destination,
+    packageDir: await resolvePackageDirectory(
+      "@workflow/world-postgres",
+      sourceDir
+    ),
+    packageName: "@workflow/world-postgres",
+    patchPath: join(
+      rootDir,
+      "patches",
+      "workflow-world-postgres@5.0.0-beta.40.patch"
+    ),
+  });
+  await vendorPatchedPackage({
+    destination,
+    dependencyName: "eve",
+    packageDir: await resolvePackageDirectory("eve", sourceDir, "@chat-js/eve"),
+    packageName: "@chat-js/eve",
+    patchPath: join(rootDir, "patches", "@chat-js%2Feve@0.80.1-chatjs.4.patch"),
+  });
+
+  await stampTemplateManifest(destination);
+};
+
+const applyElectronTemplateTransforms = async (
   destination: string
-): Promise<void> {
-  // tsconfig.json: rewrite monorepo-specific @/ alias to single-app path
-  const tsconfigPath = join(destination, "tsconfig.json");
-  let tsconfig = await readFile(tsconfigPath, "utf8");
-  tsconfig = tsconfig.replace(/"\.\.\/chat\/\*"/, '"../*"');
-  await writeFile(tsconfigPath, tsconfig);
+): Promise<void> => {
+  const brandingScript = join(destination, "scripts/write-branding.ts");
+  const source = await readFile(brandingScript, "utf-8");
+  await writeFile(
+    brandingScript,
+    source
+      .replace('"../../chat/lib/config"', '"../../lib/config"')
+      .replace(
+        '"../../chat/plugins/desktop/protocol"',
+        '"../../plugins/desktop/protocol"'
+      )
+  );
 
-  // package.json: replace hardcoded package name and repository
+  // The package.json transform replaces the hardcoded package name and repository.
   const packageJsonPath = join(destination, "package.json");
-  let packageJson = await readFile(packageJsonPath, "utf8");
+  let packageJson = await readFile(packageJsonPath, "utf-8");
   packageJson = packageJson.replace(
-    /"name": "@chat-js\/electron"/,
+    /"name": "@chat-js\/electron"/u,
     '"name": "__PROJECT_NAME__-electron"'
   );
-  packageJson = packageJson
-    .replace(
-      /"url": "https:\/\/github.com\/FranciscoMoretti\/chat-js.git"/,
-      '"url": "https://github.com/__GITHUB_OWNER__/__GITHUB_REPO__.git"'
-    );
+  packageJson = packageJson.replace(
+    /"url": "https:\/\/github.com\/FranciscoMoretti\/chat-js.git"/u,
+    '"url": "https://github.com/__GITHUB_OWNER__/__GITHUB_REPO__.git"'
+  );
   await writeFile(packageJsonPath, packageJson);
-}
-
-async function copyElectronTemplate(destination: string): Promise<void> {
-  await rm(destination, { recursive: true, force: true });
+};
+const copyElectronTemplate = async (destination: string): Promise<void> => {
+  await rm(destination, { force: true, recursive: true });
   await cp(electronSourceDir, destination, {
+    filter: (file): boolean =>
+      shouldCopyElectronFile(relative(electronSourceDir, file)),
     recursive: true,
-    filter: shouldCopyElectronFilePath,
   });
   await applyElectronTemplateTransforms(destination);
-}
-
-async function copyTemplate(destination: string): Promise<void> {
-  await rm(destination, { recursive: true, force: true });
+};
+const copyTemplate = async (destination: string): Promise<void> => {
+  await rm(destination, { force: true, recursive: true });
   await cp(sourceDir, destination, {
-    recursive: true,
     filter: shouldCopyFilePath,
+    recursive: true,
   });
   await applyTemplateTransforms(destination);
-}
+};
+const reportSnapshotParity = (
+  label: string,
+  expectedSnapshot: Readonly<Pick<Map<string, string>, "entries">>,
+  actualSnapshot: Readonly<Pick<Map<string, string>, "entries">>
+): boolean => {
+  const expectedEntries = [...expectedSnapshot.entries()].toSorted(
+    (
+      [leftPath]: readonly [string, string],
+      [rightPath]: readonly [string, string]
+    ): number => leftPath.localeCompare(rightPath)
+  );
+  const actualEntries = [...actualSnapshot.entries()].toSorted(
+    (
+      [leftPath]: readonly [string, string],
+      [rightPath]: readonly [string, string]
+    ): number => leftPath.localeCompare(rightPath)
+  );
 
-async function collectSnapshot(
-  dir: string,
-  prefix = ""
-): Promise<Map<string, string>> {
-  const entries = await readdir(dir, { withFileTypes: true });
-  const output = new Map<string, string>();
-  for (const entry of entries) {
-    const absolute = join(dir, entry.name);
-    const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
-    if (entry.isDirectory()) {
-      const nested = await collectSnapshot(absolute, rel);
-      for (const [nestedPath, hash] of nested) {
-        output.set(nestedPath, hash);
-      }
-      continue;
-    }
-    if (!entry.isFile()) {
-      continue;
-    }
-    const bytes = await readFile(absolute);
-    const hash = createHash("sha256").update(bytes).digest("hex");
-    output.set(rel, hash);
+  if (JSON.stringify(expectedEntries) !== JSON.stringify(actualEntries)) {
+    console.error(
+      `${label}: template drift detected. Run \`bun template:sync\`.`
+    );
+    return false;
   }
-  return output;
-}
+  console.log(`${label}: template is synced.`);
+  return true;
+};
 
-async function assertSynced(
+const assertSynced = async (
   label: string,
   actualDir: string,
   copyFn: (dest: string) => Promise<void>
-): Promise<boolean> {
+): Promise<boolean> => {
   const templateStats = await stat(actualDir).catch(() => null);
-  if (!templateStats?.isDirectory()) {
+  if (!templateStats || !templateStats.isDirectory()) {
     console.error(
       `${label}: template folder missing. Run \`bun template:sync\`.`
     );
@@ -244,29 +233,19 @@ async function assertSynced(
     collectSnapshot(actualDir),
   ]);
 
-  await rm(tempParent, { recursive: true, force: true });
+  await rm(tempParent, { force: true, recursive: true });
 
-  const expectedEntries = [...expectedSnapshot.entries()].sort((a, b) =>
-    a[0].localeCompare(b[0])
-  );
-  const actualEntries = [...actualSnapshot.entries()].sort((a, b) =>
-    a[0].localeCompare(b[0])
-  );
-
-  if (JSON.stringify(expectedEntries) !== JSON.stringify(actualEntries)) {
-    console.error(`${label}: template drift detected. Run \`bun template:sync\`.`);
-    return false;
-  }
-  console.log(`${label}: template is synced.`);
-  return true;
-}
+  return reportSnapshotParity(label, expectedSnapshot, actualSnapshot);
+};
 
 if (isCheck) {
   const results = await Promise.all([
     assertSynced("chat-app", templateDir, copyTemplate),
     assertSynced("electron", electronTemplateDir, copyElectronTemplate),
   ]);
-  if (results.some((ok) => !ok)) process.exit(1);
+  if (results.some((ok): boolean => !ok)) {
+    process.exit(FAILURE_EXIT_STATUS);
+  }
 } else {
   await copyTemplate(templateDir);
   console.log("Synced templates/chat-app from apps/chat.");

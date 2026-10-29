@@ -1,61 +1,111 @@
+import { SidebarLink } from "@/components/navigation-links";
+import {
+  PluginSidebar,
+  PluginSidebarHeader,
+} from "@/components/plugin-chat-ui";
+import components from "@/components.json";
+import { settingsItems } from "@/settings-items";
+import React, { Suspense } from "react";
 import { Cpu } from "lucide-react";
-import { InternalLink } from "@/components/internal-link";
-import { NewChatButton } from "@/components/new-chat-button";
-import { SearchChatsButton } from "@/components/search-chats";
-import { SidebarTopRow } from "@/components/sidebar-top-row";
-import { ScrollArea } from "@/components/ui/scroll-area";
+
+import { EveHistory } from "@/components/eve/eve-history";
+
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
   SidebarHeader,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
   SidebarSeparator,
+  SidebarGroup,
+  SidebarMenu,
+  SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { AppSidebarHistoryConditional } from "./app-sidebar-history-conditional";
+
+import { NewChatButton } from "@/components/new-chat-button";
+import type { JSX as ReactJSX } from "react";
+import { SidebarTopRow } from "@/components/sidebar-top-row";
+
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { ChatSidebarView } from "./chat-sidebar-view";
+
 import { SidebarUserNav } from "./sidebar-user-nav";
 
-export function AppSidebar() {
+import { Skeleton } from "@/components/ui/skeleton";
+import { headers } from "next/headers";
+
+import { resolveEvePrincipal } from "@/lib/eve/principal";
+
+const modelSettingsItem = settingsItems.find((item) => item.id === "models");
+
+const ScopedPluginSidebarHeader = async (): Promise<ReactJSX.Element> => {
+  const principal = await resolveEvePrincipal(await headers());
   return (
-    <Sidebar
-      className="grid max-h-dvh grid-rows-[auto_1fr_auto] group-data-[side=left]:border-r-0"
-      collapsible="icon"
-    >
-      <SidebarHeader className="shrink-0">
-        <SidebarMenu>
-          <div className="flex flex-row items-center justify-between">
-            <SidebarTopRow />
-          </div>
-
-          <NewChatButton />
-
-          <SidebarMenuItem>
-            <SearchChatsButton />
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <SidebarMenuButton asChild tooltip="Models">
-              <InternalLink href="/settings/models">
-                <Cpu className="size-4" />
-                <span className="group-data-[collapsible=icon]:hidden">
-                  Models
-                </span>
-              </InternalLink>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarHeader>
-      <SidebarSeparator />
-      <ScrollArea className="relative flex-1 overflow-y-auto">
-        <SidebarContent className="max-w-(--sidebar-width) pr-2">
-          <AppSidebarHistoryConditional />
-        </SidebarContent>
-      </ScrollArea>
-      <SidebarSeparator />
-      <SidebarFooter>
-        <SidebarUserNav />
-      </SidebarFooter>
-    </Sidebar>
+    <PluginSidebarHeader
+      key={principal?.ownerId ?? "anonymous"}
+      ownerId={principal?.ownerId}
+    />
   );
-}
+};
+
+const HistorySkeleton = (): React.JSX.Element => (
+  <SidebarGroup>
+    <div className="flex flex-col gap-2 px-2">
+      <Skeleton className="h-7 w-full" />
+      <Skeleton className="h-7 w-5/6" />
+      <Skeleton className="h-7 w-4/5" />
+      <Skeleton className="h-7 w-full" />
+    </div>
+  </SidebarGroup>
+);
+
+export const AppSidebar = (): React.JSX.Element => (
+  <ChatSidebarView
+    primitives={{
+      Sidebar,
+      SidebarContent,
+      SidebarFooter,
+      SidebarHeader,
+      SidebarSeparator,
+      ScrollArea,
+    }}
+    direction={components.rtl ? "rtl" : "ltr"}
+    footer={<SidebarUserNav />}
+    header={
+      <SidebarMenu>
+        <div className="flex flex-row items-center justify-between">
+          <SidebarTopRow />
+        </div>
+
+        <NewChatButton />
+        <Suspense
+          fallback={
+            <SidebarMenuItem>
+              <Skeleton className="h-8 w-full" />
+            </SidebarMenuItem>
+          }
+        >
+          <ScopedPluginSidebarHeader />
+        </Suspense>
+        {modelSettingsItem && (modelSettingsItem.isVisible?.() ?? true) && (
+          <SidebarMenuItem>
+            <SidebarLink
+              tooltip="Models"
+              aria-label="Models"
+              href={modelSettingsItem.href}
+            >
+              <Cpu className="size-4" />
+              <span className="group-data-[collapsible=icon]:hidden">
+                Models
+              </span>
+            </SidebarLink>
+          </SidebarMenuItem>
+        )}
+      </SidebarMenu>
+    }
+  >
+    <Suspense fallback={<HistorySkeleton />}>
+      <PluginSidebar />
+      <EveHistory />
+    </Suspense>
+  </ChatSidebarView>
+);

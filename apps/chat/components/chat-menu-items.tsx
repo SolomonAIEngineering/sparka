@@ -2,46 +2,42 @@
 
 import { Pencil, PinIcon, Trash2 } from "lucide-react";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { ShareMenuItem } from "@/components/upgrade-cta/share-menu-item";
+
+import React from "react";
 
 interface ChatMenuItemsProps {
-  isPinned: boolean;
-  onDelete: () => void;
-  onRename: () => void;
-  onShare?: () => void;
-  onTogglePin: () => void;
-  showShare?: boolean;
+  readonly isPinned: boolean;
+  readonly onDelete?: () => void;
+  readonly pluginActions?: React.ReactNode;
+  readonly onRename: () => void;
+  readonly onTogglePin: () => void;
 }
 
-export function ChatMenuItems({
+export const ChatMenuItems = ({
   isPinned,
   onRename,
   onTogglePin,
   onDelete,
-  onShare,
-  showShare = true,
-}: ChatMenuItemsProps) {
-  return (
-    <>
-      <DropdownMenuItem className="cursor-pointer" onClick={onRename}>
-        <Pencil size={16} />
-        <span>Rename</span>
-      </DropdownMenuItem>
+  pluginActions,
+}: ChatMenuItemsProps): React.JSX.Element => (
+  <>
+    <DropdownMenuItem className="cursor-pointer" onClick={onRename}>
+      <Pencil size={16} />
+      <span>Rename</span>
+    </DropdownMenuItem>
 
-      <DropdownMenuItem className="cursor-pointer" onClick={onTogglePin}>
-        <PinIcon className={`size-4 ${isPinned ? "fill-current" : ""}`} />
-        <span>{isPinned ? "Unpin" : "Pin"}</span>
-      </DropdownMenuItem>
+    <DropdownMenuItem className="cursor-pointer" onClick={onTogglePin}>
+      <PinIcon className={`size-4 ${isPinned ? "fill-current" : ""}`} />
+      <span>{isPinned ? "Unpin" : "Pin"}</span>
+    </DropdownMenuItem>
 
-      {showShare && onShare && <ShareMenuItem onShare={onShare} />}
+    {pluginActions}
 
-      <DropdownMenuItem
-        className="cursor-pointer text-destructive focus:bg-destructive/15 focus:text-destructive"
-        onSelect={onDelete}
-      >
+    {onDelete && (
+      <DropdownMenuItem variant="destructive" onClick={onDelete}>
         <Trash2 size={16} />
         <span>Delete</span>
       </DropdownMenuItem>
-    </>
-  );
-}
+    )}
+  </>
+);

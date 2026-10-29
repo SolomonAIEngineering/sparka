@@ -1,26 +1,31 @@
-import type { MetadataRoute } from "next";
-
 import { siteLastModified, siteLinks } from "@/lib/site-config";
+import type { MetadataRoute } from "next";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   return [
     {
-      url: siteLinks.home,
-      lastModified: siteLastModified,
       changeFrequency: "weekly",
+      lastModified: siteLastModified,
       priority: 1,
+      url: siteLinks.home,
     },
     {
-      url: siteLinks.docs,
-      lastModified: siteLastModified,
       changeFrequency: "daily",
+      lastModified: siteLastModified,
       priority: 0.9,
+      url: siteLinks.docs,
     },
     {
-      url: siteLinks.docsGettingStarted,
-      lastModified: siteLastModified,
       changeFrequency: "weekly",
+      lastModified: siteLastModified,
+      priority: 0.9,
+      url: siteLinks.threads,
+    },
+    {
+      changeFrequency: "weekly",
+      lastModified: siteLastModified,
       priority: 0.8,
+      url: siteLinks.docsGettingStarted,
     },
   ];
 }

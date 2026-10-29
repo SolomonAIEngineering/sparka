@@ -1,202 +1,31 @@
 ---
-title: "Follow-up Questions"
-description: "Generate and display contextual follow-up suggestions"
+title: Follow-up Questions
+description: Customize generation and display through the Follow-up Suggestions plugin
 ---
 
-> Suggest follow-up questions after AI responses, shown only on the last message.
+Use the [Follow-up Suggestions plugin](../plugins/followup-suggestions) to add three to five related questions after a completed answer. This recipe shows where to customize its generation and rendering.
 
-## Overview
+## Prerequisites
 
-After the AI responds, generate contextual follow-up questions using a fast model. These are streamed as `data-*` parts which are UI-only - they're filtered out before sending context to the LLM.
+Install the plugin, apply its database migration, and enable `ai.tools.followupSuggestions.enabled` in `chat.config.ts`. Select a model available through your gateway with the `default` option.
 
-File convention: `lib/ai/followup-suggestions.ts` → `components/followup-suggestions.tsx`
+## Customize generation
 
-## How it works
+1. `agent/hooks/followup-suggestions.ts` registers the plugin's native EVE hook.
+2. `plugins/followup-suggestions/followup-hook.ts` collects the current exchange and claims the completed turn before making a model call.
+3. `plugins/followup-suggestions/generate-suggestions.ts` generates the questions using the configured model and core usage accounting.
+4. `plugins/followup-suggestions/followup-queries.ts` stores the result in `EveFollowup` with its session, turn, and completion-event identity.
 
-1. **Generate** suggestions after the main response using a cheap/fast model
-2. **Stream** as `data-followupSuggestions` part (data-\* prefix = UI-only)
-3. **Ignore** data-\* parts via `convertToModelMessages({ convertDataPart: () => undefined })`
-4. **Render** only on the last message
+Edit the generation prompt to change the style of questions. Keep the durable claim before the paid call, preserve completion identity, and retain model usage accounting. The output schema in `suggestion-output.ts` accepts three to five nonempty suggestions of at most 80 characters each.
 
-## Code
+## Customize display
 
-### 1. Generate & Stream Suggestions
+`plugins/followup-suggestions/use-followups.ts` matches the completed answer and reads stored results with bounded polling. Suggestions are persisted separately from the native transcript and are displayed after generation finishes.
 
-```ts title="lib/ai/followup-suggestions.ts"
-import { type ModelMessage, Output, streamText } from "ai";
-import { z } from "zod";
-import { getLanguageModel } from "@/lib/ai/providers";
-import type { StreamWriter } from "@/lib/ai/types";
-import { config } from "@/lib/config";
-import { generateUUID } from "@/lib/utils";
+Edit `followup-suggestions-view.tsx` to change their presentation. The plugin's `Suggestions` contribution passes selected text to core's existing send/compare flow. Generated questions become conversation input only when selected.
 
-export async function generateFollowupSuggestions(
-  modelMessages: ModelMessage[]
-) {
-  return streamText({
-    model: await getLanguageModel(
-      config.models.defaults.followupSuggestions
-    ),
-    messages: [
-      ...modelMessages,
-      {
-        role: "user",
-        content:
-          "What question should I ask next? Return an array of 3-5 suggestions, max 80 chars each.",
-      },
-    ],
-    output: Output.object({
-      schema: z.object({
-        suggestions: z.array(z.string()).min(3).max(5),
-      }),
-    }),
-  });
-}
+## Preserve cleanup
 
-export async function streamFollowupSuggestions({
-  followupSuggestionsResult,
-  writer,
-}: {
-  followupSuggestionsResult: ReturnType<typeof generateFollowupSuggestions>;
-  writer: StreamWriter;
-}) {
-  const dataPartId = generateUUID();
-  const result = await followupSuggestionsResult;
+The plugin's `chat.ts` removes results for deleted native sessions inside the existing deletion transaction. Keep this callback when changing storage so deleting one branch preserves surviving results and late generation cannot recreate a deleted claim.
 
-  for await (const chunk of result.partialOutputStream) {
-    writer.write({
-      id: dataPartId,
-      type: "data-followupSuggestions", // data-* = UI-only, filtered from LLM context
-      data: {
-        suggestions:
-          chunk.suggestions?.filter((s): s is string => s !== undefined) ?? [],
-      },
-    });
-  }
-}
-```
-
-### 2. Call After Response
-
-```ts title="app/(chat)/api/chat/route.ts"
-// Inside createUIMessageStream execute callback, after result.consumeStream()
-await result.consumeStream();
-
-const response = await result.response;
-const responseMessages = response.messages;
-
-// Generate and stream follow-up suggestions
-const followupSuggestionsResult = generateFollowupSuggestions([
-  ...contextForLLM,
-  ...responseMessages,
-]);
-await streamFollowupSuggestions({
-  followupSuggestionsResult,
-  writer: dataStream,
-});
-```
-
-### 3. Ignore Data Parts in Conversion
-
-```ts title="lib/ai/core-chat-agent.ts"
-import { convertToModelMessages } from "ai";
-
-// Convert to model messages, ignoring data-* parts (UI-only)
-const modelMessages = await convertToModelMessages(messages, {
-  convertDataPart: () => undefined, // Ignores all data-* parts
-});
-```
-
-### 4. Render on Last Message Only
-
-```tsx title="components/followup-suggestions.tsx"
-"use client";
-
-import { useChatStoreApi } from "@ai-sdk-tools/store";
-import { useMessageIds } from "@/lib/stores/hooks-base";
-import {
-  useMessagePartByPartIdx,
-  useMessagePartTypesById,
-} from "@/lib/stores/hooks-message-parts";
-import type { ChatMessage } from "@/lib/ai/types";
-import { generateUUID } from "@/lib/utils";
-
-export function FollowUpSuggestionsParts({ messageId }: { messageId: string }) {
-  const types = useMessagePartTypesById(messageId);
-  const ids = useMessageIds();
-  const isLastMessage = ids.at(-1) === messageId;
-
-  // Only show on the last message
-  if (!isLastMessage) {
-    return null;
-  }
-
-  const partIdx = types.indexOf("data-followupSuggestions");
-  if (partIdx === -1) {
-    return null;
-  }
-
-  return <FollowUpSuggestionsPart messageId={messageId} partIdx={partIdx} />;
-}
-
-function FollowUpSuggestionsPart({
-  messageId,
-  partIdx,
-}: {
-  messageId: string;
-  partIdx: number;
-}) {
-  const part = useMessagePartByPartIdx(
-    messageId,
-    partIdx,
-    "data-followupSuggestions"
-  );
-
-  return <FollowUpSuggestions suggestions={part.data.suggestions} />;
-}
-
-export function FollowUpSuggestions({
-  suggestions,
-}: {
-  suggestions: string[];
-}) {
-  const storeApi = useChatStoreApi();
-
-  const handleClick = (suggestion: string) => {
-    const sendMessage = storeApi.getState().sendMessage;
-    const parentMessageId = storeApi.getState().getLastMessageId();
-
-    const message: ChatMessage = {
-      id: generateUUID(),
-      role: "user",
-      parts: [{ type: "text", text: suggestion }],
-      metadata: {
-        createdAt: new Date(),
-        parentMessageId,
-        selectedModel: "your-default-model", // Get from context
-      },
-    };
-
-    sendMessage(message);
-  };
-
-  if (!suggestions?.length) return null;
-
-  return (
-    <div className="mt-2 flex flex-col gap-2">
-      <div className="text-xs text-muted-foreground">Related</div>
-      <div className="flex flex-wrap gap-1.5">
-        {suggestions.map((s) => (
-          <button
-            key={s}
-            onClick={() => handleClick(s)}
-            className="rounded-md border px-2 py-1 text-sm hover:bg-muted"
-          >
-            {s}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-```
+See the [Plugin API](../reference/plugin-api) for the lifecycle and UI contracts.

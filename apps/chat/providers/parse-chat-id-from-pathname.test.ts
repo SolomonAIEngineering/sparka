@@ -1,103 +1,126 @@
 import { describe, expect, it } from "vitest";
+
 import { parseChatIdFromPathname } from "./parse-chat-id-from-pathname";
 
 describe("parseChatIdFromPathname", () => {
   it("returns home for /", () => {
     expect(parseChatIdFromPathname("/")).toEqual({
-      type: "home",
       id: null,
+      contextId: null,
+      pluginId: null,
+      parentHref: "/",
       source: "home",
-      projectId: null,
+      type: "home",
     });
   });
 
-  it("returns projectHome for /project/:projectId", () => {
+  it("returns pluginHome for /project/:projectId", () => {
     expect(parseChatIdFromPathname("/project/proj-123")).toEqual({
-      type: "projectHome",
       id: null,
-      source: "project",
-      projectId: "proj-123",
+      contextId: "proj-123",
+      pluginId: "projects",
+      parentHref: "/project/proj-123",
+      source: "plugin",
+      type: "pluginHome",
     });
   });
 
   it("returns chat for /chat/:id", () => {
     expect(parseChatIdFromPathname("/chat/chat-789")).toEqual({
-      type: "chat",
       id: "chat-789",
+      contextId: null,
+      pluginId: null,
+      parentHref: "/",
       source: "chat",
-      projectId: null,
+      type: "chat",
     });
   });
 
-  it("returns projectChat for /project/:projectId/chat/:chatId", () => {
+  it("returns pluginChat for /project/:projectId/chat/:chatId", () => {
     expect(parseChatIdFromPathname("/project/proj-123/chat/chat-456")).toEqual({
-      type: "projectChat",
       id: "chat-456",
-      source: "project",
-      projectId: "proj-123",
+      contextId: "proj-123",
+      pluginId: "projects",
+      parentHref: "/project/proj-123",
+      source: "plugin",
+      type: "pluginChat",
     });
   });
 
   it("returns share for /share/:id", () => {
     expect(parseChatIdFromPathname("/share/abc-123")).toEqual({
-      type: "share",
       id: "abc-123",
+      contextId: null,
+      pluginId: null,
+      parentHref: "/",
       source: "share",
-      projectId: null,
+      type: "share",
     });
   });
 
   it("returns passthrough for null pathname", () => {
     expect(parseChatIdFromPathname(null)).toEqual({
-      type: "passthrough",
       id: null,
+      contextId: null,
+      pluginId: null,
+      parentHref: "/",
       source: null,
-      projectId: null,
+      type: "passthrough",
     });
   });
 
   it("returns passthrough for settings", () => {
     expect(parseChatIdFromPathname("/settings")).toEqual({
-      type: "passthrough",
       id: null,
+      contextId: null,
+      pluginId: null,
+      parentHref: "/",
       source: null,
-      projectId: null,
+      type: "passthrough",
     });
   });
 
   it("returns passthrough for unknown routes", () => {
     expect(parseChatIdFromPathname("/unknown/path")).toEqual({
-      type: "passthrough",
       id: null,
+      contextId: null,
+      pluginId: null,
+      parentHref: "/",
       source: null,
-      projectId: null,
+      type: "passthrough",
     });
   });
 
   it("returns passthrough for chat routes with extra segments", () => {
     expect(parseChatIdFromPathname("/chat/a/b")).toEqual({
-      type: "passthrough",
       id: null,
+      contextId: null,
+      pluginId: null,
+      parentHref: "/",
       source: null,
-      projectId: null,
+      type: "passthrough",
     });
   });
 
   it("returns passthrough for share routes with extra segments", () => {
     expect(parseChatIdFromPathname("/share/a/b")).toEqual({
-      type: "passthrough",
       id: null,
+      contextId: null,
+      pluginId: null,
+      parentHref: "/",
       source: null,
-      projectId: null,
+      type: "passthrough",
     });
   });
 
   it("returns passthrough for project chat routes with extra segments", () => {
     expect(parseChatIdFromPathname("/project/p/chat/a/b")).toEqual({
-      type: "passthrough",
       id: null,
+      contextId: null,
+      pluginId: null,
+      parentHref: "/",
       source: null,
-      projectId: null,
+      type: "passthrough",
     });
   });
 });

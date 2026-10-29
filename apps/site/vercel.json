@@ -5,11 +5,11 @@
   "rewrites": [
     {
       "source": "/docs",
-      "destination": "https://chatjs.mintlify.dev/docs"
+      "destination": "https://chat-js-docs.vercel.app/docs"
     },
     {
       "source": "/docs/:match*",
-      "destination": "https://chatjs.mintlify.dev/docs/:match*"
+      "destination": "https://chat-js-docs.vercel.app/docs/:match*"
     }
   ]
 }

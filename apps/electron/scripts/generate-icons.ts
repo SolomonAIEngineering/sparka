@@ -1,29 +1,47 @@
-import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
-import * as png2icons from "png2icons";
+import { BICUBIC2, clearCache, createICNS, createICO } from "png2icons";
+import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
 
-const root = resolve(__dirname, "..");
-const src = join(root, "icon.png");
-const buildDir = join(root, "build");
-const outputBase = join(buildDir, "icon");
+const LOSSLESS_COLOR_COUNT = 0;
 
-mkdirSync(buildDir, { recursive: true });
+const root = fileURLToPath(new URL("..", import.meta.url));
+const src = path.join(root, "icon.png");
+const buildDir = path.join(root, "build");
+const outputBase = path.join(buildDir, "icon");
 
-const sourcePng = readFileSync(src);
-const icns = png2icons.createICNS(sourcePng, png2icons.BICUBIC2, 0);
-const ico = png2icons.createICO(sourcePng, png2icons.BICUBIC2, 0, false, true);
+const readIconFormats = async (): Promise<{
+  icns: Buffer;
+  ico: Buffer;
+}> => {
+  const sourcePng = await readFile(src);
+  const icns = createICNS(sourcePng, BICUBIC2, LOSSLESS_COLOR_COUNT);
+  const ico = createICO(sourcePng, BICUBIC2, LOSSLESS_COLOR_COUNT, false, true);
 
-if (!icns) {
-  throw new Error("Failed to generate build/icon.icns");
-}
+  if (!icns) {
+    throw new Error("Failed to generate build/icon.icns");
+  }
 
-if (!ico) {
-  throw new Error("Failed to generate build/icon.ico");
-}
+  if (!ico) {
+    throw new Error("Failed to generate build/icon.ico");
+  }
 
-copyFileSync(src, `${outputBase}.png`);
-writeFileSync(`${outputBase}.icns`, icns);
-writeFileSync(`${outputBase}.ico`, ico);
-png2icons.clearCache();
+  return { icns, ico };
+};
+const generateIcons = async (): Promise<void> => {
+  try {
+    await mkdir(buildDir, { recursive: true });
+    const { icns, ico } = await readIconFormats();
 
-console.log("Generated build/icon.{png,icns,ico}");
+    await copyFile(src, `${outputBase}.png`);
+    await writeFile(`${outputBase}.icns`, icns);
+    await writeFile(`${outputBase}.ico`, ico);
+    clearCache();
+
+    console.log("Generated build/icon.{png,icns,ico}");
+  } catch (error) {
+    console.error(error);
+    process.exitCode = 1;
+  }
+};
+void generateIcons();

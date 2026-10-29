@@ -1,26 +1,35 @@
 "use client";
 
 import {
+  AccountMenuTrigger,
+  AccountMenuContent,
+} from "@/components/sidebar-menus";
+import { MenuLink } from "@/components/navigation-links";
+import {
   ChevronsUpDown,
-  DollarSign,
   LogIn,
   LogOut,
   Moon,
   Settings,
   Sun,
 } from "lucide-react";
+import React from "react";
+
+import type { JSX as ReactJSX } from "react";
+
 import { useRouter } from "next/navigation";
+
 import { useTheme } from "next-themes";
-import { InternalLink } from "@/components/internal-link";
+import { toast } from "sonner";
+
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+
 import {
   DropdownMenu,
-  DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
-  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
   SidebarMenu,
@@ -28,15 +37,22 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { useGetCredits } from "@/hooks/chat-sync-hooks";
+import { installedAccountSummaries } from "@/composition/generated/installed-account-ui";
+
 import authClient from "@/lib/auth-client";
-import { isElectronRenderer } from "@/lib/electron-auth";
+
 import { cn } from "@/lib/utils";
+import { signOutWithPlugin } from "@/composition/generated/installed-sign-out";
+
+import { signOutAndNavigate } from "@/lib/sign-out";
+
 import { useSession } from "@/providers/session-provider";
 
-export function SidebarUserNav() {
-  const { data: session } = useSession();
-  const { credits } = useGetCredits();
+const USER_INITIALS_LENGTH = 2;
+
+export const SidebarUserNav = (): ReactJSX.Element => {
+  const [, startEventAction] = React.useTransition();
+  const { data: session, isPending } = useSession();
   const { setTheme, resolvedTheme } = useTheme();
   const router = useRouter();
   const { isMobile, state } = useSidebar();
@@ -44,11 +60,34 @@ export function SidebarUserNav() {
 
   const user = session?.user;
 
+  if (isPending) {
+    return (
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <div
+            aria-hidden="true"
+            className="flex h-12 items-center gap-2 rounded-md p-2"
+          >
+            <div className="bg-sidebar-accent size-8 animate-pulse rounded-lg" />
+            <div className="grid flex-1 gap-1 group-data-[collapsible=icon]:hidden">
+              <div className="bg-sidebar-accent h-3 w-20 animate-pulse rounded" />
+              <div className="bg-sidebar-accent h-3 w-28 animate-pulse rounded" />
+            </div>
+          </div>
+        </SidebarMenuItem>
+      </SidebarMenu>
+    );
+  }
+
   if (!user) {
     return (
       <SidebarMenu>
         <SidebarMenuItem>
-          <SidebarMenuButton onClick={() => router.push("/login")}>
+          <SidebarMenuButton
+            onClick={() => {
+              router.push("/login");
+            }}
+          >
             <LogIn className="size-4" />
             <span>Sign in</span>
           </SidebarMenuButton>
@@ -58,86 +97,75 @@ export function SidebarUserNav() {
   }
 
   const displayName = user.name || user.email || "User";
-  const userInitials = displayName.slice(0, 2).toUpperCase();
-  const avatarImageSrc = user.image || `https://avatar.vercel.sh/${user.email}`;
+  const userInitials = displayName.slice(0, USER_INITIALS_LENGTH).toUpperCase();
+  const { image: userImage } = user;
+  const avatarImageSrc =
+    typeof userImage === "string" && userImage !== ""
+      ? userImage
+      : `https://avatar.vercel.sh/${user.email}`;
 
   return (
     <SidebarMenu>
       <SidebarMenuItem>
         <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <SidebarMenuButton
+          <AccountMenuTrigger collapsed={isDesktopCollapsed}>
+            <Avatar
               className={cn(
-                "mx-auto data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground",
-                isDesktopCollapsed &&
-                  "flex flex-col items-center justify-center"
+                "size-8 rounded-lg",
+                isDesktopCollapsed && "size-6"
               )}
-              size="lg"
             >
-              <Avatar
-                className={cn(
-                  "size-8 rounded-lg",
-                  isDesktopCollapsed && "size-6"
-                )}
-              >
-                <AvatarImage alt={displayName} src={avatarImageSrc} />
-                <AvatarFallback className="rounded-lg">
-                  {userInitials}
-                </AvatarFallback>
-              </Avatar>
-              <div
-                className={cn(
-                  "grid flex-1 text-left text-sm leading-tight",
-                  isDesktopCollapsed && "hidden"
-                )}
-              >
-                <span className="truncate font-medium">
-                  {user.name || user.email}
-                </span>
-                <span className="flex items-center gap-1 truncate text-xs">
-                  <DollarSign className="size-3" />
-                  {((credits ?? 0) / 100).toFixed(2)}
-                </span>
-              </div>
-              <ChevronsUpDown
-                className={cn("ml-auto size-4", isDesktopCollapsed && "hidden")}
-              />
-            </SidebarMenuButton>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align="end"
-            className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
-            side={isMobile ? "bottom" : "right"}
-            sideOffset={4}
-          >
-            <DropdownMenuLabel className="p-0 font-normal">
-              <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-                <Avatar className="h-8 w-8 rounded-lg">
-                  <AvatarImage alt={displayName} src={avatarImageSrc} />
-                  <AvatarFallback className="rounded-lg">
-                    {userInitials}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">
-                    {user.name || user.email}
-                  </span>
-                  <span className="truncate text-xs">{user.email}</span>
+              <AvatarImage alt={displayName} src={avatarImageSrc} />
+              <AvatarFallback className="rounded-lg">
+                {userInitials}
+              </AvatarFallback>
+            </Avatar>
+            <div
+              className={cn(
+                "grid flex-1 text-left text-sm leading-tight",
+                isDesktopCollapsed && "hidden"
+              )}
+            >
+              <span className="truncate font-medium">
+                {user.name || user.email}
+              </span>
+              {installedAccountSummaries.map(({ id, Component }) => (
+                <Component key={id} />
+              ))}
+            </div>
+            <ChevronsUpDown
+              className={cn("ml-auto size-4", isDesktopCollapsed && "hidden")}
+            />
+          </AccountMenuTrigger>
+          <AccountMenuContent side={isMobile ? "bottom" : "right"}>
+            <DropdownMenuGroup>
+              <DropdownMenuLabel className="p-0 font-normal">
+                <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
+                  <Avatar className="h-8 w-8 rounded-lg">
+                    <AvatarImage alt={displayName} src={avatarImageSrc} />
+                    <AvatarFallback className="rounded-lg">
+                      {userInitials}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="grid flex-1 text-left text-sm leading-tight">
+                    <span className="truncate font-semibold">
+                      {user.name || user.email}
+                    </span>
+                    <span className="truncate text-xs">{user.email}</span>
+                  </div>
                 </div>
-              </div>
-            </DropdownMenuLabel>
+              </DropdownMenuLabel>
+            </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem asChild>
-                <InternalLink href="/settings">
-                  <Settings className="mr-2 size-4" />
-                  Settings
-                </InternalLink>
-              </DropdownMenuItem>
+              <MenuLink href="/settings">
+                <Settings className="mr-2 size-4" />
+                Settings
+              </MenuLink>
               <DropdownMenuItem
-                onClick={() =>
-                  setTheme(resolvedTheme === "light" ? "dark" : "light")
-                }
+                onClick={() => {
+                  setTheme(resolvedTheme === "light" ? "dark" : "light");
+                }}
               >
                 {resolvedTheme === "light" ? (
                   <Moon className="mr-2 size-4" />
@@ -148,26 +176,35 @@ export function SidebarUserNav() {
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={async () => {
-                if (
-                  isElectronRenderer() &&
-                  typeof window.signOut === "function"
-                ) {
-                  await window.signOut();
-                  await window.electronAPI?.syncAuthSession?.();
-                } else {
-                  await authClient.signOut();
-                }
-                window.location.href = "/";
-              }}
-            >
-              <LogOut className="mr-2 size-4" />
-              Log out
-            </DropdownMenuItem>
-          </DropdownMenuContent>
+            <DropdownMenuGroup>
+              <DropdownMenuItem
+                onClick={() => {
+                  startEventAction(async () => {
+                    await signOutAndNavigate({
+                      navigate: () => {
+                        globalThis.location.href = "/";
+                      },
+                      onFailure: () => {
+                        toast.error("Unable to sign out. Try again.");
+                      },
+                      signOut: async () => {
+                        if (!(await signOutWithPlugin())) {
+                          await authClient.signOut({
+                            fetchOptions: { throw: true },
+                          });
+                        }
+                      },
+                    });
+                  });
+                }}
+              >
+                <LogOut className="mr-2 size-4" />
+                Log out
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+          </AccountMenuContent>
         </DropdownMenu>
       </SidebarMenuItem>
     </SidebarMenu>
   );
-}
+};

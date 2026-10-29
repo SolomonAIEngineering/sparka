@@ -1,8 +1,8 @@
 import type { NextConfig } from "next";
+import { withEve } from "eve/next";
 
 const nextConfig: NextConfig = {
-  typedRoutes: true,
-  cacheComponents: false,
+  cacheComponents: true,
   experimental: {
     optimizePackageImports: [
       "react-tweet",
@@ -14,16 +14,15 @@ const nextConfig: NextConfig = {
       static: 30,
     },
   },
-  serverExternalPackages: ["pino", "pino-pretty"],
   images: {
     remotePatterns: [
       {
         hostname: "avatar.vercel.sh",
       },
       {
-        protocol: "https",
         hostname: "*.googleusercontent.com",
         pathname: "**",
+        protocol: "https",
       },
       {
         hostname: "avatars.githubusercontent.com",
@@ -37,6 +36,13 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  partialPrefetching: true,
+  serverExternalPackages: ["pino", "pino-pretty"],
+  transpilePackages: ["@chat-js/gateways"],
+  typedRoutes: true,
 };
 
-export default nextConfig;
+export default withEve(nextConfig, {
+  agents: { chat: "." },
+  devServerTimeoutMs: 600_000,
+});

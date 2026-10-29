@@ -1,20 +1,35 @@
 "use client";
+import { wordCountInput, wordCountResult } from "./schemas";
+import React from "react";
+import type { ReadonlyNativeSurface } from "@/lib/readonly-native-surface";
+import type { ToolRendererProps } from "@/lib/ai/define-tool-renderer";
+import { defineToolRenderer } from "@/lib/ai/define-tool-renderer";
 
-import type { TypelessToolPartFromTool } from "@/tools/chatjs/_shared/lib/tool-part";
-import type { wordCount } from "./tool";
+type WordCountRendererTool = ToolRendererProps<
+  typeof wordCountInput,
+  typeof wordCountResult
+>["tool"];
 
-type WordCountRendererTool = TypelessToolPartFromTool<typeof wordCount>;
+const Stat = ({
+  label,
+  value,
+}: Readonly<{ label: string; value: number }>): React.JSX.Element => (
+  <div className="flex flex-col items-center gap-1">
+    <span className="text-lg font-semibold">{value}</span>
+    <span className="text-muted-foreground text-xs">{label}</span>
+  </div>
+);
 
-export function WordCountRenderer({
+const WordCountView = ({
   tool,
-}: {
+}: ReadonlyNativeSurface<{
   tool: WordCountRendererTool;
   messageId: string;
   isReadonly: boolean;
-}) {
+}>): React.JSX.Element | null => {
   if (tool.state === "input-available") {
     return (
-      <div className="rounded-lg border p-3 text-muted-foreground text-sm">
+      <div className="text-muted-foreground rounded-lg border p-3 text-sm">
         Counting words...
       </div>
     );
@@ -24,7 +39,7 @@ export function WordCountRenderer({
     return null;
   }
 
-  if (!tool.output) {
+  if (tool.output === undefined) {
     return null;
   }
 
@@ -38,13 +53,10 @@ export function WordCountRenderer({
       <Stat label="Sentences" value={sentences} />
     </div>
   );
-}
+};
 
-function Stat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="flex flex-col items-center gap-1">
-      <span className="font-semibold text-lg">{value}</span>
-      <span className="text-muted-foreground text-xs">{label}</span>
-    </div>
-  );
-}
+export const WordCountRenderer = defineToolRenderer({
+  inputSchema: wordCountInput,
+  outputSchema: wordCountResult,
+  render: WordCountView,
+});

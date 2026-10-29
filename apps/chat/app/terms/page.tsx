@@ -1,12 +1,14 @@
+import React from "react";
+
 import { config } from "@/lib/config";
 
-function getPlanTypesLabel({
+const getPlanTypesLabel = ({
   hasFree,
   hasPro,
 }: {
-  hasFree: boolean;
-  hasPro: boolean;
-}): string {
+  readonly hasFree: boolean;
+  readonly hasPro: boolean;
+}): string => {
   if (hasFree && hasPro) {
     return "free and paid";
   }
@@ -14,9 +16,9 @@ function getPlanTypesLabel({
     return "paid";
   }
   return "free";
-}
+};
 
-function PricingSection({
+const PricingSection = ({
   hasAnyPlan,
   planTypesLabel,
   hasFree,
@@ -24,13 +26,13 @@ function PricingSection({
   currencySymbol,
   paymentProcessors,
 }: {
-  hasAnyPlan: boolean;
-  planTypesLabel: string;
-  hasFree: boolean;
-  hasPro: boolean;
-  currencySymbol: string;
-  paymentProcessors: string[];
-}) {
+  readonly hasAnyPlan: boolean;
+  readonly planTypesLabel: string;
+  readonly hasFree: boolean;
+  readonly hasPro: boolean;
+  readonly currencySymbol: string;
+  readonly paymentProcessors: readonly string[];
+}): React.JSX.Element => {
   if (!hasAnyPlan) {
     return (
       <>
@@ -90,19 +92,20 @@ function PricingSection({
       )}
     </>
   );
-}
+};
 
-export default function TermsPage() {
+const TermsPage = (): React.JSX.Element => {
   const currencySymbolMap: Record<string, string> = {
-    USD: "$",
     EUR: "€",
     GBP: "£",
+    USD: "$",
   };
 
   const currencyCode = config.pricing?.currency;
-  const currencySymbol = currencyCode
-    ? (currencySymbolMap[currencyCode] ?? currencyCode)
-    : "";
+  const currencySymbol =
+    typeof currencyCode === "string" && currencyCode !== ""
+      ? (currencySymbolMap[currencyCode] ?? currencyCode)
+      : "";
   const hasFree = Boolean(config.pricing?.free);
   const hasPro = Boolean(config.pricing?.pro);
   const hasAnyPlan = hasFree || hasPro;
@@ -114,7 +117,7 @@ export default function TermsPage() {
   return (
     <main className="prose dark:prose-invert container mx-auto max-w-3xl py-10">
       <h1>{config.policies.terms.title}</h1>
-      {config.policies.terms.lastUpdated ? (
+      {(config.policies.terms.lastUpdated ?? "").length > 0 ? (
         <p>
           <strong>Last updated:</strong> {config.policies.terms.lastUpdated}
         </p>
@@ -234,8 +237,9 @@ export default function TermsPage() {
 
       <h2>11. Disclaimers</h2>
       <p>
-        {config.appName} is provided "as is" and "as available" without any
-        warranties of any kind, either express or implied.
+        {config.appName} is provided &quot;as is&quot; and &quot;as
+        available&quot; without any warranties of any kind, either express or
+        implied.
       </p>
 
       <h2>12. Termination</h2>
@@ -261,4 +265,6 @@ export default function TermsPage() {
       </p>
     </main>
   );
-}
+};
+
+export default TermsPage;

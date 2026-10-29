@@ -1,64 +1,75 @@
 "use client";
 
-import { motion } from "motion/react";
-import {
-	type CSSProperties,
-	type ElementType,
-	type JSX,
-	memo,
-	useMemo,
-} from "react";
+import type { CSSProperties, ElementType, JSX as ReactJSX } from "react";
+import React, { memo, useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
+import { useAnimate } from "motion/react";
 
-export type TextShimmerProps = {
-	children: string;
-	as?: ElementType;
-	className?: string;
-	duration?: number;
-	spread?: number;
-};
+const DEFAULT_SHIMMER_DURATION_SECONDS = 2;
+const DEFAULT_SHIMMER_SPREAD_PIXELS = 2;
+
+interface TextShimmerProps {
+  readonly children: string;
+  readonly as?: ElementType;
+  readonly className?: string;
+  readonly duration?: number;
+  readonly spread?: number;
+}
 
 const ShimmerComponent = ({
-	children,
-	as: Component = "p",
-	className,
-	duration = 2,
-	spread = 2,
-}: TextShimmerProps) => {
-	const MotionComponent = motion.create(
-		Component as keyof JSX.IntrinsicElements,
-	);
+  children,
+  as: Component = "p",
+  className,
+  duration = DEFAULT_SHIMMER_DURATION_SECONDS,
+  spread = DEFAULT_SHIMMER_SPREAD_PIXELS,
+}: TextShimmerProps): ReactJSX.Element => {
+  const [, animate] = useAnimate<HTMLElement>();
+  const attachAnimation = useCallback(
+    (element: HTMLElement | null): (() => void) | undefined => {
+      if (element === null) {
+        return undefined;
+      }
+      const animation = animate(
+        element,
+        { backgroundPosition: ["100% center", "0% center"] },
+        {
+          duration,
+          ease: "linear",
+          repeat: Number.POSITIVE_INFINITY,
+        }
+      );
+      return (): void => {
+        animation.stop();
+      };
+    },
+    [animate, duration]
+  );
+  const dynamicSpread = children.length * spread;
+  const style = useMemo(
+    () =>
+      ({
+        "--spread": `${dynamicSpread}px`,
+        backgroundImage:
+          "var(--bg), linear-gradient(var(--color-muted-foreground), var(--color-muted-foreground))",
+        backgroundPosition: "100% center",
+      }) as CSSProperties,
+    [dynamicSpread]
+  );
 
-	const dynamicSpread = useMemo(
-		() => (children?.length ?? 0) * spread,
-		[children, spread],
-	);
-
-	return (
-		<MotionComponent
-			animate={{ backgroundPosition: "0% center" }}
-			className={cn(
-				"relative inline-block bg-[length:250%_100%,auto] bg-clip-text text-transparent",
-				"[--bg:linear-gradient(90deg,#0000_calc(50%-var(--spread)),var(--color-background),#0000_calc(50%+var(--spread)))] [background-repeat:no-repeat,padding-box]",
-				className,
-			)}
-			initial={{ backgroundPosition: "100% center" }}
-			style={
-				{
-					"--spread": `${dynamicSpread}px`,
-					backgroundImage:
-						"var(--bg), linear-gradient(var(--color-muted-foreground), var(--color-muted-foreground))",
-				} as CSSProperties
-			}
-			transition={{
-				repeat: Number.POSITIVE_INFINITY,
-				duration,
-				ease: "linear",
-			}}
-		>
-			{children}
-		</MotionComponent>
-	);
+  return (
+    <Component
+      ref={attachAnimation}
+      className={cn(
+        "relative inline-block bg-[length:250%_100%,auto] bg-clip-text text-transparent",
+        "[background-repeat:no-repeat,padding-box] [--bg:linear-gradient(90deg,#0000_calc(50%-var(--spread)),var(--color-background),#0000_calc(50%+var(--spread)))]",
+        className
+      )}
+      style={style}
+    >
+      {children}
+    </Component>
+  );
 };
-
-export const Shimmer = memo(ShimmerComponent);
+const Shimmer = memo(ShimmerComponent);
+export { Shimmer };
+export type { TextShimmerProps };

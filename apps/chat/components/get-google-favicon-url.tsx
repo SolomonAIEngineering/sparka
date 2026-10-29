@@ -1,7 +1,15 @@
+const defaultFaviconSizePx = 128;
+
 /**
- * Gets a favicon URL via Google's favicon service for any URL/hostname
+ * Gets a favicon URL via Google's favicon service for any URL/hostname.
+ * @param {string} urlOrHostname URL or hostname whose favicon is requested.
+ * @param {number} size Requested icon size in pixels.
+ * @returns {string} Service URL, or empty text when URL parsing fails.
  */
-export function getGoogleFaviconUrl(urlOrHostname: string, size = 128): string {
+export const getGoogleFaviconUrl = (
+  urlOrHostname: string,
+  size = defaultFaviconSizePx
+): string => {
   try {
     const hostname = urlOrHostname.includes("://")
       ? new URL(urlOrHostname).hostname
@@ -10,4 +18,4 @@ export function getGoogleFaviconUrl(urlOrHostname: string, size = 128): string {
   } catch {
     return "";
   }
-}
+};

@@ -1,263 +1,138 @@
-/**
- * Build script — generates items/*.json and index.json from src/{name}/.
- *
- * Each tool directory must contain:
- *   tool.ts       — backend tool implementation
- *   renderer.tsx  — frontend renderer component
- *   meta.json     — { description, extraDependencies? }
- *
- * npm dependencies are auto-detected from import statements in tool.ts and
- * renderer.tsx. Use extraDependencies in meta.json only for packages that are
- * loaded dynamically (e.g. via require()) and would be missed by static analysis.
- *
- * Run: bun run build
- */
-
-import fs from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { assertItemDependencies } from "./dependency-contract";
+import { registryDescriptor } from "./descriptor";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { Node, Project, SyntaxKind } from "ts-morph";
-import {
-  readStaticToolMetadata,
-  type StaticToolEnvVar,
-  type StaticToolEnvVars,
-} from "./src/static-tool-metadata";
+import { registry } from "./registry";
+import { spawn } from "bun";
+import { registryItemSchema, registrySchema } from "shadcn/schema";
+import { selectUiSources } from "./ui-implementations";
+import { registryItemForUi } from "./ui-registry";
 
-const srcDir = fileURLToPath(new URL("./src", import.meta.url));
-const appToolsDir = fileURLToPath(
-  new URL("../../apps/chat/tools/chatjs", import.meta.url)
+const JSON_INDENTATION = 2;
+const SUCCESS_EXIT_CODE = 0;
+
+const cwd = import.meta.dir;
+// Select each item independently: alternative providers intentionally share
+// installation targets, and must never overwrite one another in a global map.
+const selectedItems = new Map(
+  await Promise.all(
+    registry.items.map(async (item) => {
+      const sources = new Map(
+        await Promise.all(
+          (item.files ?? []).map(
+            async (file) =>
+              [
+                file.target?.replace(/^~\//u, "") ?? file.path,
+                await readFile(path.join(cwd, file.path), "utf-8"),
+              ] as const
+          )
+        )
+      );
+      const selected = new Map(
+        await Promise.all(
+          (["base", "radix"] as const).map(async (base) => {
+            const output = await selectUiSources(
+              sources,
+              base,
+              async (entry) =>
+                await readFile(path.resolve(cwd, "../..", entry.radix), "utf-8")
+            );
+            assertItemDependencies(
+              item,
+              new Map(
+                (item.files ?? []).map((file) => {
+                  const target = file.target?.replace(/^~\//u, "") ?? file.path;
+                  const content = output.get(target);
+                  if (content === undefined) {
+                    throw new Error(`Missing selected source: ${target}`);
+                  }
+                  return [file.path, content];
+                })
+              )
+            );
+            return [base, output] as const;
+          })
+        )
+      );
+      return [item.name, selected] as const;
+    })
+  )
 );
-const itemsDir = fileURLToPath(new URL("./items", import.meta.url));
-const indexPath = fileURLToPath(new URL("./index.json", import.meta.url));
 
-// Node.js built-in module names (node: prefix is handled separately)
-const NODE_BUILTINS = new Set([
-  "assert", "buffer", "child_process", "cluster", "console", "constants",
-  "crypto", "dgram", "dns", "domain", "events", "fs", "http", "http2",
-  "https", "module", "net", "os", "path", "perf_hooks", "process",
-  "punycode", "querystring", "readline", "repl", "stream", "string_decoder",
-  "sys", "timers", "tls", "trace_events", "tty", "url", "util", "v8",
-  "vm", "worker_threads", "zlib",
-]);
-
-/**
- * Extract npm package names from static import/export statements in source code.
- * Filters out relative imports, Node built-ins, and the node: protocol.
- */
-function extractNpmImports(source: string): string[] {
-  const specifiers = new Set<string>();
-  const project = new Project({
-    useInMemoryFileSystem: true,
-    skipAddingFilesFromTsConfig: true,
-  });
-  const sourceFile = project.createSourceFile("file.ts", source);
-
-  for (const importDeclaration of sourceFile.getImportDeclarations()) {
-    if (importDeclaration.isTypeOnly()) {
-      continue;
+await rm(path.join(cwd, "dist"), { force: true, recursive: true });
+await mkdir(path.join(cwd, "dist/source"), { recursive: true });
+await Promise.all(
+  registry.items.map(async (item) => {
+    const descriptor = await registryDescriptor(item);
+    if (descriptor) {
+      await writeFile(
+        path.join(cwd, descriptor.path),
+        descriptor.content ?? ""
+      );
+      item.files ??= [];
+      const { content: _content, ...file } = descriptor;
+      item.files.push(file);
     }
-
-    const moduleSpecifier = importDeclaration.getModuleSpecifierValue();
-    const pkg = getImportPackage(moduleSpecifier);
-    if (pkg) {
-      specifiers.add(pkg);
-    }
-  }
-
-  for (const exportDeclaration of sourceFile.getExportDeclarations()) {
-    if (exportDeclaration.isTypeOnly()) {
-      continue;
-    }
-
-    const moduleSpecifier = exportDeclaration.getModuleSpecifierValue();
-    const pkg = moduleSpecifier ? getImportPackage(moduleSpecifier) : null;
-    if (pkg) {
-      specifiers.add(pkg);
-    }
-  }
-
-  for (const node of sourceFile.getDescendantsOfKind(SyntaxKind.CallExpression)) {
-    const expression = node.getExpression();
-    if (!Node.isImportExpression(expression)) {
-      continue;
-    }
-
-    const [argument] = node.getArguments();
-    if (!argument || !Node.isStringLiteral(argument)) {
-      continue;
-    }
-
-    const pkg = getImportPackage(argument.getLiteralValue());
-    if (pkg) {
-      specifiers.add(pkg);
-    }
-  }
-
-  return [...specifiers].sort();
+  })
+);
+await writeFile(
+  path.join(cwd, "registry.json"),
+  `${JSON.stringify(registry, null, JSON_INDENTATION)}\n`
+);
+const process = spawn(
+  [
+    "bunx",
+    "--bun",
+    "shadcn@4.21.0",
+    "build",
+    "registry.json",
+    "--output",
+    "dist/r",
+  ],
+  { cwd, stderr: "inherit", stdout: "inherit" }
+);
+if ((await process.exited) !== SUCCESS_EXIT_CODE) {
+  throw new Error("shadcn registry build failed");
 }
 
-function getImportPackage(spec: string): string | null {
-  if (
-    spec.startsWith(".") || // relative
-    spec.startsWith("/") || // absolute path
-    spec.startsWith("node:") || // explicit node: protocol
-    spec.startsWith("@/") || // app path alias
-    spec.startsWith("@toolkit/") // registry-owned shared helpers
-  ) {
-    return null;
-  }
-
-  const pkg = spec.startsWith("@")
-    ? spec.split("/").slice(0, 2).join("/")
-    : spec.split("/")[0];
-
-  return NODE_BUILTINS.has(pkg) ? null : pkg;
-}
-
-type Meta = {
-  description: string;
-  hidden?: boolean;
-  extraDependencies?: string[];
-  devDependencies?: string[];
-  registryDependencies?: string[];
-  files?: Array<{
-    source: string;
-    target: string;
-    type: "tool" | "renderer" | "lib" | "component" | "hook";
-  }>;
-};
-
-async function fileExists(filePath: string): Promise<boolean> {
-  return fs
-    .access(filePath)
-    .then(() => true)
-    .catch(() => false);
-}
-
-async function main(): Promise<void> {
-  await fs.mkdir(itemsDir, { recursive: true });
-
-  const entries = await fs.readdir(srcDir);
-  const dirs: string[] = [];
-  for (const entry of entries) {
-    const stat = await fs.stat(path.join(srcDir, entry));
-    if (stat.isDirectory()) dirs.push(entry);
-  }
-
-  const index: Array<{ name: string; description: string; hidden?: boolean }> = [];
-
-  for (const name of dirs) {
-    const dir = path.join(srcDir, name);
-
-    const meta: Meta = JSON.parse(
-      await fs.readFile(path.join(dir, "meta.json"), "utf8")
+// Keep the published root namespace compatible with existing Base installs.
+// Each native namespace is complete; @chatjs dependencies resolve through the
+// consumer's selected namespace, retaining the same item IDs and target paths.
+const output = path.join(cwd, "dist/r");
+const outputFiles = await readdir(output);
+const builtFiles = outputFiles.filter((file) => file.endsWith(".json"));
+await Promise.all(
+  (["base", "radix"] as const).map(async (base) => {
+    const destination = path.join(output, base);
+    await mkdir(destination, { recursive: true });
+    await Promise.all(
+      builtFiles.map(async (file) => {
+        const content = await readFile(path.join(output, file), "utf-8");
+        if (base === "base") {
+          await writeFile(path.join(destination, file), content);
+          return;
+        }
+        const data: unknown = JSON.parse(content);
+        const transformed =
+          file === "registry.json"
+            ? {
+                ...registrySchema.parse(data),
+                items: registrySchema
+                  .parse(data)
+                  .items.map((item) => registryItemForUi(item, base)),
+              }
+            : registryItemForUi(
+                registryItemSchema.parse(data),
+                base,
+                selectedItems
+                  .get(registryItemSchema.parse(data).name)
+                  ?.get(base)
+              );
+        await writeFile(
+          path.join(destination, file),
+          `${JSON.stringify(transformed, null, JSON_INDENTATION)}\n`
+        );
+      })
     );
-    const appDir = path.join(appToolsDir, name);
-    const registryFiles: Array<{
-      path: string;
-      type: "tool" | "renderer" | "lib" | "component" | "hook";
-      target: string;
-      content: string;
-    }> = [];
-
-    const detected = new Set<string>();
-    let toolEnvVars: StaticToolEnvVars = [];
-
-    const registryToolPath = path.join(dir, "tool.ts");
-    const registryRendererPath = path.join(dir, "renderer.tsx");
-    const toolPath =
-      (await fileExists(registryToolPath))
-        ? registryToolPath
-        : path.join(appDir, "tool.ts");
-    const rendererPath =
-      (await fileExists(registryRendererPath))
-        ? registryRendererPath
-        : path.join(appDir, "renderer.tsx");
-
-    if (await fileExists(toolPath)) {
-      const toolContent = await fs.readFile(toolPath, "utf8");
-      registryFiles.push({
-        path: "tool.ts",
-        type: "tool",
-        target: `${name}/tool.ts`,
-        content: toolContent,
-      });
-      for (const dependency of extractNpmImports(toolContent)) {
-        detected.add(dependency);
-      }
-      const metadata = readStaticToolMetadata(toolContent);
-      toolEnvVars = metadata.toolEnvVars;
-    }
-
-    if (await fileExists(rendererPath)) {
-      const rendererContent = await fs.readFile(rendererPath, "utf8");
-      registryFiles.push({
-        path: "renderer.tsx",
-        type: "renderer",
-        target: `${name}/renderer.tsx`,
-        content: rendererContent,
-      });
-      for (const dependency of extractNpmImports(rendererContent)) {
-        detected.add(dependency);
-      }
-    }
-
-    for (const file of meta.files ?? []) {
-      const content = await fs.readFile(path.join(dir, file.source), "utf8");
-      registryFiles.push({
-        path: file.source,
-        type: file.type,
-        target: file.target,
-        content,
-      });
-      for (const dependency of extractNpmImports(content)) {
-        detected.add(dependency);
-      }
-    }
-
-    for (const dep of meta.extraDependencies ?? []) detected.add(dep);
-    const dependencies = [...detected].sort();
-
-    const item = {
-      name,
-      description: meta.description,
-      ...(meta.hidden ? { hidden: true } : {}),
-      ...(dependencies.length > 0 ? { dependencies } : {}),
-      ...(meta.devDependencies?.length
-        ? { devDependencies: [...new Set(meta.devDependencies)].sort() }
-        : {}),
-      ...(meta.registryDependencies?.length
-        ? {
-            registryDependencies: [
-              ...new Set(meta.registryDependencies),
-            ].sort(),
-          }
-        : {}),
-      ...(toolEnvVars.length > 0 ? { envRequirements: toolEnvVars } : {}),
-      files: registryFiles,
-    };
-
-    await fs.writeFile(
-      path.join(itemsDir, `${name}.json`),
-      JSON.stringify(item, null, 2) + "\n"
-    );
-
-    index.push({
-      name,
-      description: meta.description,
-      ...(meta.hidden ? { hidden: true } : {}),
-    });
-    console.log(
-      `  built ${name} (deps: ${dependencies.join(", ") || "none"})`
-    );
-  }
-
-  await fs.writeFile(indexPath, JSON.stringify(index, null, 2) + "\n");
-
-  console.log(`\n✓ ${dirs.length} tool(s) → items/ + index.json`);
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+  })
+);

@@ -1,30 +1,35 @@
 "use client";
 
-import type { ReactNode } from "react";
-import {
+import type { ArtifactMetadata, UIArtifact } from "@/lib/artifacts/types";
+import React, {
   createContext,
   useCallback,
   useContext,
   useMemo,
   useState,
 } from "react";
-import type { UIArtifact } from "@/components/artifact-panel";
-import type { ArtifactMetadata } from "@/components/create-artifact";
+import type { JSX as ReactJSX } from "react";
+import type { ReadonlyReactNode } from "@/lib/readonly-react-node";
 
 const initialArtifactData: UIArtifact = {
-  documentId: "init",
   content: "",
+  date: undefined,
+  documentId: "init",
+  isVisible: false,
   kind: "text",
-  title: "",
   messageId: "",
   status: "idle",
-  isVisible: false,
-  date: undefined,
+  title: "",
 };
 
-type Selector<T> = (state: UIArtifact) => T;
+type Selector<Selected> = (state: UIArtifact) => Selected;
 
 type MetadataUpdater = (current: ArtifactMetadata) => ArtifactMetadata;
+
+// Function-valued updates are callbacks; stored metadata is the callback result.
+const isMetadataUpdater = (
+  value: ArtifactMetadata | MetadataUpdater
+): value is MetadataUpdater => typeof value === "function";
 
 type MetadataStore = Record<string, ArtifactMetadata>;
 
@@ -44,14 +49,18 @@ const ArtifactContext = createContext<ArtifactContextType | undefined>(
   undefined
 );
 
-export function ArtifactProvider({ children }: { children: ReactNode }) {
-  const [artifact, setArtifactState] =
+const ArtifactProvider = ({
+  children,
+}: {
+  readonly children: ReadonlyReactNode;
+}): ReactJSX.Element => {
+  const [artifactState, setArtifactState] =
     useState<UIArtifact>(initialArtifactData);
   const [metadataStore, setMetadataStore] = useState<MetadataStore>({});
 
   const setArtifact = useCallback(
     (updaterFn: UIArtifact | ((currentArtifact: UIArtifact) => UIArtifact)) => {
-      setArtifactState((currentArtifact) => {
+      setArtifactState((currentArtifact: UIArtifact) => {
         if (typeof updaterFn === "function") {
           return updaterFn(currentArtifact);
         }
@@ -63,12 +72,11 @@ export function ArtifactProvider({ children }: { children: ReactNode }) {
 
   const setMetadata = useCallback(
     (documentId: string, metadata: ArtifactMetadata | MetadataUpdater) => {
-      setMetadataStore((current) => ({
+      setMetadataStore((current: Readonly<MetadataStore>) => ({
         ...current,
-        [documentId]:
-          typeof metadata === "function"
-            ? metadata(current[documentId] ?? null)
-            : metadata,
+        [documentId]: isMetadataUpdater(metadata)
+          ? metadata(current[documentId] ?? null)
+          : metadata,
       }));
     },
     []
@@ -76,12 +84,12 @@ export function ArtifactProvider({ children }: { children: ReactNode }) {
 
   const contextValue = useMemo(
     () => ({
-      artifact,
-      setArtifact,
+      artifact: artifactState,
       metadata: metadataStore,
+      setArtifact,
       setMetadata,
     }),
-    [artifact, setArtifact, metadataStore, setMetadata]
+    [artifactState, setArtifact, metadataStore, setMetadata]
   );
 
   return (
@@ -89,25 +97,43 @@ export function ArtifactProvider({ children }: { children: ReactNode }) {
       {children}
     </ArtifactContext.Provider>
   );
-}
+};
 
-function useArtifactContext() {
+const useArtifactContext = (): ArtifactContextType => {
   const context = useContext(ArtifactContext);
   if (!context) {
     throw new Error("Artifact hooks must be used within ArtifactProvider");
   }
   return context;
-}
+};
 
-export function useArtifactSelector<Selected>(selector: Selector<Selected>) {
+const useArtifactSelector = <Selected,>(
+  selector: Selector<Selected>
+): Selected => {
   const { artifact } = useArtifactContext();
 
   const selectedValue = useMemo(() => selector(artifact), [artifact, selector]);
 
   return selectedValue;
+};
+
+interface ArtifactHookValue {
+  artifact: UIArtifact;
+  closeArtifact: () => void;
+  metadata: ArtifactMetadata;
+  resetArtifact: () => void;
+  setArtifact: ArtifactContextType["setArtifact"];
+  setMetadata: (metadataArg: ArtifactMetadata | MetadataUpdater) => void;
 }
 
-export function useArtifact() {
+const hideArtifact = (currentArtifact: UIArtifact): UIArtifact => {
+  if (currentArtifact.status === "streaming") {
+    return { ...currentArtifact, isVisible: false };
+  }
+  return { ...initialArtifactData, status: "idle" };
+};
+
+const useArtifact = (): ArtifactHookValue => {
   const {
     artifact,
     setArtifact,
@@ -115,14 +141,15 @@ export function useArtifact() {
     setMetadata: setMetadataStore,
   } = useArtifactContext();
 
-  const metadata = useMemo(
-    () =>
-      artifact.documentId ? (metadataStore[artifact.documentId] ?? null) : null,
-    [metadataStore, artifact.documentId]
-  );
+  const metadata = useMemo(() => {
+    if (artifact.documentId) {
+      return metadataStore[artifact.documentId] ?? null;
+    }
+    return null;
+  }, [metadataStore, artifact.documentId]);
 
   const setMetadata = useCallback(
-    (metadataArg: ArtifactMetadata | MetadataUpdater) => {
+    (metadataArg: ArtifactMetadata | MetadataUpdater): void => {
       if (artifact.documentId) {
         setMetadataStore(artifact.documentId, metadataArg);
       }
@@ -130,30 +157,24 @@ export function useArtifact() {
     [artifact.documentId, setMetadataStore]
   );
 
-  const resetArtifact = useCallback(() => {
+  const resetArtifact = useCallback((): void => {
     setArtifact(initialArtifactData);
   }, [setArtifact]);
 
-  const closeArtifact = useCallback(() => {
-    setArtifact((currentArtifact) =>
-      currentArtifact.status === "streaming"
-        ? {
-            ...currentArtifact,
-            isVisible: false,
-          }
-        : { ...initialArtifactData, status: "idle" }
-    );
+  const closeArtifact = useCallback((): void => {
+    setArtifact(hideArtifact);
   }, [setArtifact]);
 
   return useMemo(
     () => ({
       artifact,
-      setArtifact,
-      resetArtifact,
       closeArtifact,
       metadata,
+      resetArtifact,
+      setArtifact,
       setMetadata,
     }),
     [artifact, setArtifact, metadata, setMetadata, resetArtifact, closeArtifact]
   );
-}
+};
+export { ArtifactProvider, useArtifact, useArtifactSelector };

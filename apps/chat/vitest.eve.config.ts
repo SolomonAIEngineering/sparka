@@ -1,0 +1,39 @@
+import { defineConfig } from "vitest/config";
+import tsconfigPaths from "vite-tsconfig-paths";
+
+export default defineConfig({
+  plugins: [tsconfigPaths()],
+  test: {
+    // Fixtures install/drop shared provider triggers and inspect queue-wide state.
+    fileParallelism: false,
+    include: [
+      "tests/eve-workspace-attachments.e2e.ts",
+      "tests/eve-workspace-copy-access.e2e.ts",
+      "tests/eve-workspace-turns.e2e.ts",
+      "tests/eve-persistent-sandboxes.e2e.ts",
+      "tests/eve-lifecycle-provider.e2e.ts",
+      "tests/eve-creation-recovery.e2e.ts",
+      "tests/eve-guests.e2e.ts",
+      "tests/eve-guest-cleanup.e2e.ts",
+      "tests/eve-contracts.e2e.ts",
+      "tests/eve-response-groups.e2e.ts",
+      "tests/eve-usage-cursor.e2e.ts",
+      "tests/eve-code-sandboxes.e2e.ts",
+      "tests/eve-delete-family.e2e.ts",
+      "tests/eve-postgres-stream-resume.e2e.ts",
+      "tests/eve-votes.e2e.ts",
+      "tests/eve-projects.e2e.ts",
+      "tests/eve-documents.e2e.ts",
+      "tests/eve-files.e2e.ts",
+      "tests/eve-file-identities.e2e.ts",
+      "tests/eve-orphan-cleanup.e2e.ts",
+      "tests/eve-file-storage.e2e.ts",
+      "tests/eve-run-inventory.e2e.ts",
+      "tests/eve-resource-fence.e2e.ts",
+      "tests/eve-queue-inventory.e2e.ts",
+      "tests/eve-queue-cancellation.e2e.ts",
+      "tests/eve-queue-fence.e2e.ts",
+      "tests/eve-payload-purge.e2e.ts",
+    ],
+  },
+});

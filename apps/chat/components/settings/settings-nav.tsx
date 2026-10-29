@@ -1,35 +1,34 @@
 "use client";
 
-import { Cpu, Plug, Settings } from "lucide-react";
-import { usePathname } from "next/navigation";
-import { useMemo } from "react";
 import { InternalLink } from "@/components/internal-link";
-import { config } from "@/lib/config";
-import { cn } from "@/lib/utils";
 
-export function SettingsNav({
+import React from "react";
+
+import type { JSX as ReactJSX } from "react";
+
+import type { SettingsItem } from "@/components/settings/settings-item";
+
+import { cn } from "@/lib/utils";
+import { settingsItems } from "@/settings-items";
+import { usePathname } from "next/navigation";
+
+type ReadonlyNavItem = Readonly<
+  Pick<SettingsItem, "href" | "label" | "isVisible">
+> & {
+  readonly icon: (props: {
+    readonly className: string;
+  }) => ReturnType<SettingsItem["icon"]>;
+};
+
+export const SettingsNav = ({
   orientation = "vertical",
 }: {
-  orientation?: "horizontal" | "vertical";
-}) {
+  readonly orientation?: "horizontal" | "vertical";
+}): ReactJSX.Element => {
   const pathname = usePathname();
 
-  const navItems = useMemo(
-    () =>
-      [
-        { href: "/settings" as const, label: "General", icon: Settings },
-        { href: "/settings/models" as const, label: "Models", icon: Cpu },
-        ...(config.ai.tools.mcp.enabled
-          ? [
-              {
-                href: "/settings/connectors" as const,
-                label: "Connectors",
-                icon: Plug,
-              },
-            ]
-          : []),
-      ] as const,
-    []
+  const navItems = settingsItems.filter(
+    (item: ReadonlyNavItem) => !item.isVisible || item.isVisible()
   );
 
   return (
@@ -39,7 +38,7 @@ export function SettingsNav({
         orientation === "vertical" ? "w-56 flex-col" : "flex-row"
       )}
     >
-      {navItems.map(({ href, label, icon: Icon }) => {
+      {navItems.map(({ href, label, icon: Icon }: ReadonlyNavItem) => {
         const isActive =
           href === "/settings"
             ? pathname === "/settings"
@@ -48,7 +47,7 @@ export function SettingsNav({
         return (
           <InternalLink
             className={cn(
-              "flex items-center gap-2 rounded-md px-3 py-2.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+              "text-muted-foreground hover:bg-muted hover:text-foreground flex items-center gap-2 rounded-md px-3 py-2.5 transition-colors",
               isActive && "bg-muted text-foreground"
             )}
             href={href}
@@ -61,4 +60,4 @@ export function SettingsNav({
       })}
     </nav>
   );
-}
+};

@@ -1,25 +1,65 @@
 "use client";
-
 import { format, isWithinInterval } from "date-fns";
-import { useIsMobile } from "@/hooks/use-mobile";
+import { weatherInput, weatherResult } from "./schemas";
+import React from "react";
+import type { ReadonlyNativeSurface } from "@/lib/readonly-native-surface";
+import type { ToolRendererProps } from "@/lib/ai/define-tool-renderer";
 import { cn } from "@/lib/utils";
-import type { TypelessToolPartFromTool } from "@/tools/chatjs/_shared/lib/tool-part";
-import type { getWeather, WeatherAtLocation } from "./tool";
+import { defineToolRenderer } from "@/lib/ai/define-tool-renderer";
+import { useIsMobile } from "@/hooks/use-mobile";
+import type { z } from "zod";
 
-type GetWeatherRendererTool = TypelessToolPartFromTool<typeof getWeather>;
+type WeatherAtLocation = z.output<typeof weatherResult>;
+
+type GetWeatherRendererTool = ToolRendererProps<
+  typeof weatherInput,
+  typeof weatherResult
+>["tool"];
 
 const SAMPLE = {
-  latitude: 37.763_283,
-  longitude: -122.412_86,
-  generationtime_ms: 0.027_894_973_754_882_812,
-  utc_offset_seconds: 0,
-  timezone: "GMT",
-  timezone_abbreviation: "GMT",
+  current: { interval: 900, temperature_2m: 29.3, time: "2024-10-07T19:30" },
+  current_units: { interval: "seconds", temperature_2m: "°C", time: "iso8601" },
+  daily: {
+    sunrise: [
+      "2024-10-07T07:15",
+      "2024-10-08T07:16",
+      "2024-10-09T07:17",
+      "2024-10-10T07:18",
+      "2024-10-11T07:19",
+    ],
+    sunset: [
+      "2024-10-07T19:00",
+      "2024-10-08T18:58",
+      "2024-10-09T18:57",
+      "2024-10-10T18:55",
+      "2024-10-11T18:54",
+    ],
+    time: [
+      "2024-10-07",
+      "2024-10-08",
+      "2024-10-09",
+      "2024-10-10",
+      "2024-10-11",
+    ],
+  },
+  daily_units: {
+    sunrise: "iso8601",
+    sunset: "iso8601",
+    time: "iso8601",
+  },
   elevation: 18,
-  current_units: { time: "iso8601", interval: "seconds", temperature_2m: "°C" },
-  current: { time: "2024-10-07T19:30", interval: 900, temperature_2m: 29.3 },
-  hourly_units: { time: "iso8601", temperature_2m: "°C" },
+  generationtime_ms: Number("0.027894973754882812"),
   hourly: {
+    temperature_2m: [
+      36.6, 32.8, 29.5, 28.6, 29.2, 28.2, 27.5, 26.6, 26.5, 26, 25, 23.5, 23.9,
+      24.2, 22.9, 21, 24, 28.1, 31.4, 33.9, 32.1, 28.9, 26.9, 25.2, 23, 21.1,
+      19.6, 18.6, 17.7, 16.8, 16.2, 15.5, 14.9, 14.4, 14.2, 13.7, 13.3, 12.9,
+      12.5, 13.5, 15.8, 17.7, 19.6, 21, 21.9, 22.3, 22, 20.7, 18.9, 17.9, 17.3,
+      17, 16.7, 16.2, 15.6, 15.2, 15, 15, 15.1, 14.8, 14.8, 14.9, 14.7, 14.8,
+      15.3, 16.2, 17.9, 19.6, 20.5, 21.6, 21, 20.7, 19.3, 18.7, 18.4, 17.9,
+      17.3, 17, 17, 16.8, 16.4, 16.2, 16, 15.8, 15.7, 15.4, 15.4, 16.1, 16.7,
+      17, 18.6, 19, 19.5, 19.4, 18.5, 17.9, 17.5, 16.7, 16.3, 16.1,
+    ],
     time: [
       "2024-10-07T00:00",
       "2024-10-07T01:00",
@@ -122,56 +162,22 @@ const SAMPLE = {
       "2024-10-11T02:00",
       "2024-10-11T03:00",
     ],
-    temperature_2m: [
-      36.6, 32.8, 29.5, 28.6, 29.2, 28.2, 27.5, 26.6, 26.5, 26, 25, 23.5, 23.9,
-      24.2, 22.9, 21, 24, 28.1, 31.4, 33.9, 32.1, 28.9, 26.9, 25.2, 23, 21.1,
-      19.6, 18.6, 17.7, 16.8, 16.2, 15.5, 14.9, 14.4, 14.2, 13.7, 13.3, 12.9,
-      12.5, 13.5, 15.8, 17.7, 19.6, 21, 21.9, 22.3, 22, 20.7, 18.9, 17.9, 17.3,
-      17, 16.7, 16.2, 15.6, 15.2, 15, 15, 15.1, 14.8, 14.8, 14.9, 14.7, 14.8,
-      15.3, 16.2, 17.9, 19.6, 20.5, 21.6, 21, 20.7, 19.3, 18.7, 18.4, 17.9,
-      17.3, 17, 17, 16.8, 16.4, 16.2, 16, 15.8, 15.7, 15.4, 15.4, 16.1, 16.7,
-      17, 18.6, 19, 19.5, 19.4, 18.5, 17.9, 17.5, 16.7, 16.3, 16.1,
-    ],
   },
-  daily_units: {
-    time: "iso8601",
-    sunrise: "iso8601",
-    sunset: "iso8601",
-  },
-  daily: {
-    time: [
-      "2024-10-07",
-      "2024-10-08",
-      "2024-10-09",
-      "2024-10-10",
-      "2024-10-11",
-    ],
-    sunrise: [
-      "2024-10-07T07:15",
-      "2024-10-08T07:16",
-      "2024-10-09T07:17",
-      "2024-10-10T07:18",
-      "2024-10-11T07:19",
-    ],
-    sunset: [
-      "2024-10-07T19:00",
-      "2024-10-08T18:58",
-      "2024-10-09T18:57",
-      "2024-10-10T18:55",
-      "2024-10-11T18:54",
-    ],
-  },
+  hourly_units: { temperature_2m: "°C", time: "iso8601" },
+  latitude: 37.763283,
+  longitude: -122.41286,
+  timezone: "GMT",
+  timezone_abbreviation: "GMT",
+  utc_offset_seconds: 0,
 };
 
-function n(num: number): number {
-  return Math.ceil(num);
-}
+const roundUp = (num: number): number => Math.ceil(num);
 
-function WeatherCard({
+const WeatherCard = ({
   weatherAtLocation,
-}: {
+}: ReadonlyNativeSurface<{
   weatherAtLocation: WeatherAtLocation;
-}) {
+}>): React.JSX.Element => {
   const currentHigh = Math.max(
     ...weatherAtLocation.hourly.temperature_2m.slice(0, 24)
   );
@@ -180,22 +186,27 @@ function WeatherCard({
   );
 
   const isDay = isWithinInterval(new Date(weatherAtLocation.current.time), {
-    start: new Date(weatherAtLocation.daily.sunrise[0]),
     end: new Date(weatherAtLocation.daily.sunset[0]),
+    start: new Date(weatherAtLocation.daily.sunrise[0]),
   });
 
   const isMobile = useIsMobile();
   const hoursToShow = isMobile ? 5 : 6;
   const currentTimeIndex = weatherAtLocation.hourly.time.findIndex(
-    (time) => new Date(time) >= new Date(weatherAtLocation.current.time)
+    (time): boolean =>
+      new Date(time) >= new Date(weatherAtLocation.current.time)
   );
+  const displayStartIndex =
+    currentTimeIndex === -1
+      ? Math.max(0, weatherAtLocation.hourly.time.length - hoursToShow)
+      : currentTimeIndex;
   const displayTimes = weatherAtLocation.hourly.time.slice(
-    currentTimeIndex,
-    currentTimeIndex + hoursToShow
+    displayStartIndex,
+    displayStartIndex + hoursToShow
   );
   const displayTemperatures = weatherAtLocation.hourly.temperature_2m.slice(
-    currentTimeIndex,
-    currentTimeIndex + hoursToShow
+    displayStartIndex,
+    displayStartIndex + hoursToShow
   );
 
   return (
@@ -215,19 +226,19 @@ function WeatherCard({
               { "bg-indigo-100": !isDay }
             )}
           />
-          <div className="font-medium text-4xl text-blue-50">
-            {n(weatherAtLocation.current.temperature_2m)}
+          <div className="text-4xl font-medium text-blue-50">
+            {roundUp(weatherAtLocation.current.temperature_2m)}
             {weatherAtLocation.current_units.temperature_2m}
           </div>
         </div>
 
-        <div className="text-blue-50">{`H:${n(currentHigh)}° L:${n(currentLow)}°`}</div>
+        <div className="text-blue-50">{`H:${roundUp(currentHigh)}° L:${roundUp(currentLow)}°`}</div>
       </div>
 
       <div className="flex flex-row justify-between">
         {displayTimes.map((time, index) => (
           <div className="flex flex-col items-center gap-1" key={time}>
-            <div className="text-blue-100 text-xs">
+            <div className="text-xs text-blue-100">
               {format(new Date(time), "ha")}
             </div>
             <div
@@ -237,8 +248,8 @@ function WeatherCard({
                 { "bg-indigo-200": !isDay }
               )}
             />
-            <div className="text-blue-50 text-sm">
-              {n(displayTemperatures[index])}
+            <div className="text-sm text-blue-50">
+              {roundUp(displayTemperatures[index])}
               {weatherAtLocation.hourly_units.temperature_2m}
             </div>
           </div>
@@ -246,15 +257,15 @@ function WeatherCard({
       </div>
     </div>
   );
-}
+};
 
-export function GetWeatherRenderer({
+const GetWeatherView = ({
   tool,
-}: {
+}: ReadonlyNativeSurface<{
   tool: GetWeatherRendererTool;
   messageId: string;
   isReadonly: boolean;
-}) {
+}>): React.JSX.Element => {
   if (tool.state !== "output-available") {
     return (
       <div className="skeleton" key={tool.toolCallId}>
@@ -263,9 +274,15 @@ export function GetWeatherRenderer({
     );
   }
 
-  if (!tool.output) {
+  if (tool.output === undefined) {
     return <WeatherCard weatherAtLocation={SAMPLE} />;
   }
 
   return <WeatherCard weatherAtLocation={tool.output} />;
-}
+};
+
+export const GetWeatherRenderer = defineToolRenderer({
+  inputSchema: weatherInput,
+  outputSchema: weatherResult,
+  render: GetWeatherView,
+});

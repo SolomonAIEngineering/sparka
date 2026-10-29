@@ -1,183 +1,81 @@
 "use client";
 
-import {
-  Download,
-  ExternalLink,
-  FileTextIcon,
-  Loader2Icon,
-  PaperclipIcon,
-  XIcon,
-} from "lucide-react";
-import Image from "next/image";
-import {
-  PromptInputHoverCard,
-  PromptInputHoverCardContent,
-} from "@/components/ai-elements/prompt-input";
+import { AttachmentPreviewTrigger } from "@/components/attachment-preview-trigger";
+import { Download, ExternalLink } from "lucide-react";
+import React from "react";
+import type { JSX as ReactJSX } from "react";
+import { toast } from "sonner";
+
+import { HoverCard, HoverCardContent } from "@/components/ui/hover-card";
+
 import { AttachmentCard } from "@/components/attachment-card";
 import { Button } from "@/components/ui/button";
-import { HoverCardTrigger } from "@/components/ui/hover-card";
-import type { Attachment } from "@/lib/ai/types";
 import { cn } from "@/lib/utils";
 
-function AttachmentIcon({
-  isImage,
-  isPdf,
-  url,
-  name,
-}: {
-  isImage: boolean;
-  isPdf: boolean;
-  url: string;
-  name: string;
-}) {
-  if (isImage) {
-    return (
-      <Image
-        alt={name || "attachment"}
-        className="size-5 object-cover"
-        height={20}
-        src={url}
-        width={20}
-      />
-    );
-  }
+const HTTP_NOT_FOUND = 404;
 
-  if (isPdf) {
-    return <FileTextIcon className="size-3 text-red-500" />;
-  }
+const emptyUploadQueue: string[] = [];
 
-  return <PaperclipIcon className="size-3 text-muted-foreground" />;
+interface AttachmentViewData {
+  readonly contentType: string;
+  readonly name: string;
+  readonly url: string;
 }
 
-function AttachmentPill({
-  attachment,
-  isUploading,
-  onRemove,
-}: {
-  attachment: Attachment;
-  isUploading: boolean;
-  onRemove?: () => void;
-}) {
-  const { name, url, contentType } = attachment;
-  const isImage = Boolean(contentType?.startsWith("image/") && url);
-  const isPdf = contentType === "application/pdf";
-  const attachmentLabel = name || (isImage ? "Image" : "Attachment");
-
-  return (
-    <div
-      className={cn(
-        "group relative flex h-8 cursor-default select-none items-center gap-1.5 rounded-md border border-border px-1.5 font-medium text-sm transition-all hover:bg-accent hover:text-accent-foreground",
-        isUploading && "opacity-60"
-      )}
-      data-testid="input-attachment-preview"
-    >
-      <div className="relative size-5 shrink-0">
-        <div
-          className={cn(
-            "absolute inset-0 flex size-5 items-center justify-center overflow-hidden rounded bg-background transition-opacity",
-            onRemove && !isUploading && "group-hover:opacity-0"
-          )}
-        >
-          {isUploading ? (
-            <Loader2Icon
-              className="size-3 animate-spin text-muted-foreground"
-              data-testid="input-attachment-loader"
-            />
-          ) : (
-            <AttachmentIcon
-              isImage={isImage}
-              isPdf={isPdf}
-              name={name}
-              url={url}
-            />
-          )}
-        </div>
-        {onRemove && !isUploading && (
-          <Button
-            aria-label="Remove attachment"
-            className="absolute inset-0 size-5 cursor-pointer rounded p-0 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 [&>svg]:size-2.5"
-            onClick={(e) => {
-              e.stopPropagation();
-              onRemove();
-            }}
-            type="button"
-            variant="ghost"
-          >
-            <XIcon />
-            <span className="sr-only">Remove</span>
-          </Button>
-        )}
-      </div>
-
-      <span className="max-w-24 flex-1 truncate">{attachmentLabel}</span>
-    </div>
-  );
-}
-
-function AttachmentItem({
+const AttachmentItem = ({
   attachment,
   isUploading = false,
   onRemove,
   onImageClick,
   variant = "card",
 }: {
-  attachment: Attachment;
-  isUploading?: boolean;
-  onRemove?: () => void;
-  onImageClick?: (imageUrl: string, imageName?: string) => void;
-  variant?: "card" | "pill";
-}) {
+  readonly attachment: AttachmentViewData;
+  readonly isUploading?: boolean;
+  readonly onRemove?: () => void;
+  readonly onImageClick?: (imageUrl: string, imageName?: string) => void;
+  readonly variant?: "card" | "pill";
+}): ReactJSX.Element => {
+  const [, startEventAction] = React.useTransition();
   const { name, url, contentType } = attachment;
   const isImage = Boolean(contentType?.startsWith("image/") && url);
   const attachmentLabel = name || (isImage ? "Image" : "Attachment");
 
-  const preview =
-    variant === "pill" ? (
-      <AttachmentPill
-        attachment={attachment}
-        isUploading={isUploading}
-        onRemove={onRemove}
-      />
-    ) : (
-      <AttachmentCard
-        attachment={attachment}
-        isUploading={isUploading}
-        onRemove={onRemove}
-      />
-    );
-
-  // For uploading items or items without URL, just return the preview
+  const card = (trigger?: React.ReactNode): ReactJSX.Element => (
+    <AttachmentCard
+      attachment={attachment}
+      isUploading={isUploading}
+      onRemove={onRemove}
+      variant={variant}
+    >
+      {trigger}
+    </AttachmentCard>
+  );
   if (isUploading || !url) {
-    return preview;
+    return card();
   }
-
   return (
-    <PromptInputHoverCard>
-      <HoverCardTrigger asChild>
-        <button
-          className="inline-block cursor-default text-left"
-          onClick={(e) => {
-            e.stopPropagation();
+    <HoverCard>
+      {card(
+        <AttachmentPreviewTrigger
+          aria-label={attachmentLabel}
+          onClick={() => {
             if (isImage && onImageClick) {
               onImageClick(url, name);
             }
           }}
-          type="button"
-        >
-          {preview}
-        </button>
-      </HoverCardTrigger>
-      <PromptInputHoverCardContent className="w-auto p-2">
+        />
+      )}
+      <HoverCardContent className="w-auto p-2">
         <div className="flex items-center gap-2.5">
-          <h4 className="min-w-0 flex-1 truncate px-0.5 font-semibold text-sm leading-none">
+          <h4 className="min-w-0 flex-1 truncate px-0.5 text-sm leading-none font-semibold">
             {attachmentLabel}
           </h4>
           <div className="flex gap-1">
             <Button
               className="size-7"
-              onClick={(e) => {
-                e.stopPropagation();
-                window.open(url, "_blank");
+              onClick={(event: { readonly stopPropagation: () => void }) => {
+                event.stopPropagation();
+                window.open(url, "_blank", "noopener");
               }}
               size="icon"
               title="Open"
@@ -187,21 +85,33 @@ function AttachmentItem({
             </Button>
             <Button
               className="size-7"
-              onClick={async (e) => {
-                e.stopPropagation();
-                try {
-                  const response = await fetch(url);
-                  const blob = await response.blob();
-                  const blobUrl = URL.createObjectURL(blob);
-                  const link = document.createElement("a");
-                  link.href = blobUrl;
-                  link.download = name || "file";
-                  link.click();
-                  URL.revokeObjectURL(blobUrl);
-                } catch {
-                  // Fallback: open in new tab if fetch fails
-                  window.open(url, "_blank");
-                }
+
+              onClick={(event: { readonly stopPropagation: () => void }) => {
+                startEventAction(async () => {
+                  event.stopPropagation();
+
+                  try {
+                    const response = await fetch(url);
+                    if (response.status === HTTP_NOT_FOUND) {
+                      toast.error("File unavailable");
+                      return;
+                    }
+                    if (!response.ok) {
+                      window.open(url, "_blank", "noopener");
+                      return;
+                    }
+                    const blob = await response.blob();
+                    const blobUrl = URL.createObjectURL(blob);
+                    const link = document.createElement("a");
+                    link.href = blobUrl;
+                    link.download = name || "file";
+                    link.click();
+                    URL.revokeObjectURL(blobUrl);
+                  } catch {
+                    // Fallback: open in new tab if fetch fails
+                    window.open(url, "_blank", "noopener");
+                  }
+                });
               }}
               size="icon"
               title="Download"
@@ -211,28 +121,28 @@ function AttachmentItem({
             </Button>
           </div>
         </div>
-      </PromptInputHoverCardContent>
-    </PromptInputHoverCard>
+      </HoverCardContent>
+    </HoverCard>
   );
-}
+};
 
-export function AttachmentList({
+const AttachmentList = ({
   attachments,
-  uploadQueue = [],
+  uploadQueue = emptyUploadQueue,
   onRemoveAction,
   onImageClick,
   variant = "card",
   testId = "attachments",
   className,
 }: {
-  attachments: Attachment[];
-  uploadQueue?: string[];
-  onRemoveAction?: (attachment: Attachment) => void;
-  onImageClick?: (imageUrl: string, imageName?: string) => void;
-  variant?: "card" | "pill";
-  testId?: string;
-  className?: string;
-}) {
+  readonly attachments: readonly AttachmentViewData[];
+  readonly uploadQueue?: readonly string[];
+  readonly onRemoveAction?: (attachment: AttachmentViewData) => void;
+  readonly onImageClick?: (imageUrl: string, imageName?: string) => void;
+  readonly variant?: "card" | "pill";
+  readonly testId?: string;
+  readonly className?: string;
+}): ReactJSX.Element | null => {
   if (attachments.length === 0 && uploadQueue.length === 0) {
     return null;
   }
@@ -242,30 +152,37 @@ export function AttachmentList({
       className={cn("flex flex-row flex-wrap items-end gap-2", className)}
       data-testid={testId}
     >
-      {attachments.map((attachment) => (
+      {attachments.map((attachment: AttachmentViewData): React.JSX.Element => (
         <AttachmentItem
           attachment={attachment}
           key={attachment.url}
           onImageClick={onImageClick}
           onRemove={
-            onRemoveAction ? () => onRemoveAction(attachment) : undefined
+            onRemoveAction
+              ? () => {
+                  onRemoveAction(attachment);
+                }
+              : undefined
           }
           variant={variant}
         />
       ))}
 
-      {uploadQueue.map((filename) => (
+      {uploadQueue.map((filename, index): React.JSX.Element => (
         <AttachmentItem
           attachment={{
-            url: "",
-            name: filename,
             contentType: "",
+            name: filename,
+            url: "",
           }}
-          isUploading={true}
-          key={filename}
+          isUploading
+          key={`${filename}:${index}`}
           variant={variant}
         />
       ))}
     </div>
   );
-}
+};
+
+export { AttachmentList };
+export type { AttachmentViewData };

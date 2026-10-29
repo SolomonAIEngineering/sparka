@@ -1,23 +1,62 @@
 import { eq } from "drizzle-orm";
-import { db } from "@/lib/db/client";
+
+import { auth } from "@/lib/auth";
 import { session, user } from "@/lib/db/schema";
+import { db } from "@/lib/db/client";
 import { env } from "@/lib/env";
 
-async function serializeSignedCookie(
+const DEV_SESSION_DURATION_MS = 2_592_000_000;
+const FIRST_CHARACTER_INDEX = 0;
+const AFTER_FIRST_CHARACTER_INDEX = 1;
+
+interface CookieAttributes {
+  readonly path?: string;
+  readonly httpOnly?: boolean;
+  readonly sameSite?: string;
+  readonly secure?: boolean;
+  readonly expires?: Readonly<Pick<Date, "toUTCString">>;
+}
+
+const formatSignedCookie = (
+  name: string,
+  signedValue: string,
+  opt: CookieAttributes
+): string => {
+  let cookie = `${name}=${signedValue}`;
+  const hasPath = Boolean(opt.path);
+  if (hasPath) {
+    cookie += `; Path=${opt.path}`;
+  }
+  if (opt.expires) {
+    cookie += `; Expires=${opt.expires.toUTCString()}`;
+  }
+  const isHttpOnly = Boolean(opt.httpOnly);
+  if (isHttpOnly) {
+    cookie += "; HttpOnly";
+  }
+  const isSecure = Boolean(opt.secure);
+  if (isSecure) {
+    cookie += "; Secure";
+  }
+  const { sameSite } = opt;
+  if (typeof sameSite === "string" && sameSite.length > 0) {
+    cookie += `; SameSite=${sameSite.charAt(FIRST_CHARACTER_INDEX).toUpperCase() + sameSite.slice(AFTER_FIRST_CHARACTER_INDEX)}`;
+  }
+  return cookie;
+};
+
+const serializeSignedCookie = async (
   name: string,
   value: string,
-  secret: string,
-  opt: {
-    path?: string;
-    httpOnly?: boolean;
-    sameSite?: string;
-    expires?: Date;
+  configuration: {
+    readonly secret: string;
+    readonly settings: CookieAttributes;
   }
-): Promise<string> {
+): Promise<string> => {
   const key = await crypto.subtle.importKey(
     "raw",
-    new TextEncoder().encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
+    new TextEncoder().encode(configuration.secret),
+    { hash: "SHA-256", name: "HMAC" },
     false,
     ["sign"]
   );
@@ -26,26 +65,13 @@ async function serializeSignedCookie(
     key,
     new TextEncoder().encode(value)
   );
-  const base64Sig = btoa(String.fromCharCode(...new Uint8Array(signature)));
+  const base64Sig = btoa(String.fromCodePoint(...new Uint8Array(signature)));
   const signedValue = encodeURIComponent(`${value}.${base64Sig}`);
 
-  let cookie = `${name}=${signedValue}`;
-  if (opt.path) {
-    cookie += `; Path=${opt.path}`;
-  }
-  if (opt.expires) {
-    cookie += `; Expires=${opt.expires.toUTCString()}`;
-  }
-  if (opt.httpOnly) {
-    cookie += "; HttpOnly";
-  }
-  if (opt.sameSite) {
-    cookie += `; SameSite=${opt.sameSite.charAt(0).toUpperCase() + opt.sameSite.slice(1)}`;
-  }
-  return cookie;
-}
+  return formatSignedCookie(name, signedValue, configuration.settings);
+};
 
-export async function GET() {
+export const GET = async (): Promise<Response> => {
   if (process.env.NODE_ENV !== "development") {
     return new Response("Not found", { status: 404 });
   }
@@ -53,41 +79,56 @@ export async function GET() {
   const devEmail = "dev@localhost";
   let [devUser] = await db.select().from(user).where(eq(user.email, devEmail));
 
-  if (!devUser) {
+  const userExists = Boolean(devUser);
+  if (!userExists) {
     const id = crypto.randomUUID();
     [devUser] = await db
       .insert(user)
       .values({
-        id,
         email: devEmail,
-        name: "Dev User",
         emailVerified: true,
+        id,
+        name: "Dev User",
       })
+      .onConflictDoNothing({ target: user.email })
       .returning();
+    const createdUserExists = Boolean(devUser);
+    if (!createdUserExists) {
+      [devUser] = await db.select().from(user).where(eq(user.email, devEmail));
+    }
+  }
+
+  const sessionUserExists = Boolean(devUser);
+  if (!sessionUserExists) {
+    throw new Error("Failed to create development user");
   }
 
   const token = crypto.randomUUID();
   const now = new Date();
-  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+  const expiresAt = new Date(Date.now() + DEV_SESSION_DURATION_MS);
 
   await db.insert(session).values({
-    id: crypto.randomUUID(),
-    userId: devUser.id,
-    token,
-    expiresAt,
     createdAt: now,
+    expiresAt,
+    id: crypto.randomUUID(),
+    token,
     updatedAt: now,
+    userId: devUser.id,
   });
 
+  const { authCookies } = await auth.$context;
   const signedSessionCookie = await serializeSignedCookie(
-    "better-auth.session_token",
+    authCookies.sessionToken.name,
     token,
-    env.AUTH_SECRET,
     {
-      path: "/",
-      httpOnly: true,
-      sameSite: "lax",
-      expires: expiresAt,
+      secret: env.AUTH_SECRET,
+      settings: {
+        expires: expiresAt,
+        httpOnly: true,
+        path: "/",
+        sameSite: "lax",
+        secure: authCookies.sessionToken.attributes.secure,
+      },
     }
   );
 
@@ -95,7 +136,7 @@ export async function GET() {
   headers.append("Set-Cookie", signedSessionCookie);
 
   return new Response(null, {
-    status: 302,
     headers,
+    status: 302,
   });
-}
+};

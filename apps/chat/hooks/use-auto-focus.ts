@@ -5,34 +5,31 @@ import { useEffect } from "react";
 
 const FALLBACK_FOCUS_TIMEOUT_MS = 120;
 
-function isTypingSurface(element: Element | null): boolean {
-  return (
-    (element instanceof HTMLInputElement &&
-      !element.readOnly &&
-      !element.disabled &&
-      element.type !== "hidden") ||
-    (element instanceof HTMLTextAreaElement &&
-      !element.readOnly &&
-      !element.disabled) ||
-    (element instanceof HTMLElement && element.isContentEditable)
-  );
-}
+const isTypingSurface = (element: unknown): boolean =>
+  (element instanceof HTMLInputElement &&
+    !element.readOnly &&
+    !element.disabled &&
+    element.type !== "hidden") ||
+  (element instanceof HTMLTextAreaElement &&
+    !element.readOnly &&
+    !element.disabled) ||
+  (element instanceof HTMLElement && element.isContentEditable);
 
-export function useAutoFocus({
+export const useAutoFocus = ({
   autoFocus,
   editor,
 }: {
-  autoFocus: boolean;
-  editor: LexicalEditor | null;
-}) {
-  useEffect(() => {
+  readonly autoFocus: boolean;
+  readonly editor: Readonly<Pick<LexicalEditor, "focus">> | null;
+}): void => {
+  useEffect((): (() => void) | undefined => {
     if (!(autoFocus && editor)) {
-      return;
+      return undefined;
     }
 
     let fallbackTimeout: number | null = null;
 
-    const raf = window.requestAnimationFrame(() => {
+    const raf = globalThis.requestAnimationFrame(() => {
       const active = document.activeElement;
       const isUserTypingElsewhere = isTypingSurface(active);
 
@@ -50,11 +47,11 @@ export function useAutoFocus({
       }
     });
 
-    return () => {
-      window.cancelAnimationFrame(raf);
+    return (): void => {
+      globalThis.cancelAnimationFrame(raf);
       if (fallbackTimeout !== null) {
-        window.clearTimeout(fallbackTimeout);
+        globalThis.clearTimeout(fallbackTimeout);
       }
     };
   }, [autoFocus, editor]);
-}
+};

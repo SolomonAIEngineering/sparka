@@ -1,0 +1,195 @@
+"use client";
+
+import React, { useState } from "react";
+import type { JSX as ReactJSX } from "react";
+import { z } from "zod";
+
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+
+type EveDeletionPhase =
+  | "confirm"
+  | "deleting"
+  | "pending"
+  | "unconfirmed"
+  | "checking"
+  | "unavailable"
+  | "not_started";
+
+const resultSchema = z.object({
+  rootId: z.uuid(),
+  status: z.enum(["active", "pending", "deleted"]),
+});
+
+const EveDeleteDialogView = ({
+  title,
+  scope = "group",
+  phase,
+  onClose,
+  onDelete,
+  onCheck,
+}: {
+  title: string;
+  scope?: "conversation" | "group";
+  phase: EveDeletionPhase;
+  onClose: () => void;
+  onDelete: () => void;
+  onCheck: () => void;
+}): ReactJSX.Element => {
+  const deleteLabel =
+    scope === "conversation"
+      ? "Delete conversation"
+      : "Delete conversation and branches";
+  const busy = phase === "deleting" || phase === "checking";
+  return (
+    <Dialog
+      onOpenChange={(open) => {
+        if (!(open || busy)) {
+          onClose();
+        }
+      }}
+      open
+    >
+      <DialogContent showCloseButton={!busy}>
+        <DialogHeader>
+          <DialogTitle className="mr-6">
+            {scope === "conversation"
+              ? "Delete this conversation?"
+              : "Delete conversation and branches?"}
+          </DialogTitle>
+          <DialogDescription>
+            {scope === "conversation"
+              ? `Permanently delete this conversation in “${title}”. Other branches keep their history and shared workspace.`
+              : `Permanently delete “${title}” and all its branches.`}{" "}
+            The workspace is deleted only when its last conversation is removed.
+            This cannot be undone.
+          </DialogDescription>
+        </DialogHeader>
+        {phase === "not_started" && (
+          <p role="alert">
+            Deletion has not started. Finish recovering any pending conversation
+            creation, then retry.
+          </p>
+        )}
+        {phase === "deleting" && <output>Deleting conversation…</output>}
+        {phase === "checking" && <output>Checking deletion status…</output>}
+        {phase === "pending" && (
+          <output>
+            Access has been removed, but cleanup is not complete. Retry to
+            continue. You can also resume deletion from the sidebar later.
+          </output>
+        )}
+        {phase === "unconfirmed" && (
+          <p role="alert">
+            The deletion result could not be confirmed. Check its status before
+            continuing.
+          </p>
+        )}
+        {phase === "unavailable" && (
+          <p role="alert">
+            Deletion is not available for this server configuration. Cleanup
+            could not be completed.
+          </p>
+        )}
+        <DialogFooter>
+          <Button disabled={busy} onClick={onClose} variant="outline">
+            {phase === "confirm" ? "Cancel" : "Close"}
+          </Button>
+          {(phase === "pending" || phase === "unconfirmed") && (
+            <Button onClick={onCheck} variant="outline">
+              Check status
+            </Button>
+          )}
+          {(phase === "confirm" ||
+            phase === "not_started" ||
+            phase === "pending" ||
+            phase === "deleting") && (
+            <Button disabled={busy} onClick={onDelete} variant="destructive">
+              {phase === "pending" ? "Retry deletion" : deleteLabel}
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+const EveDeleteDialog = ({
+  conversation,
+  onClose,
+  onChanged,
+}: {
+  readonly conversation: {
+    readonly id: string;
+    readonly title: string;
+    readonly state: string;
+    readonly scope?: "conversation" | "group";
+  };
+  readonly onClose: () => void;
+  readonly onChanged: (rootId: string) => Promise<void>;
+}): ReactJSX.Element => {
+  const [phase, setPhase] = useState<EveDeletionPhase>(
+    conversation.state === "deleting" ? "pending" : "confirm"
+  );
+  const request = async (method: "GET" | "DELETE"): Promise<void> => {
+    setPhase(method === "GET" ? "checking" : "deleting");
+
+    try {
+      const response = await fetch(
+        `/api/agent-conversations/${conversation.id}`,
+        { method, signal: AbortSignal.timeout(60_000) }
+      );
+      if (response.status === 503) {
+        setPhase("unavailable");
+        return;
+      }
+      if (response.status === 409) {
+        setPhase("not_started");
+        return;
+      }
+      if (!response.ok) {
+        setPhase("unconfirmed");
+        return;
+      }
+      const result = resultSchema.parse(await response.json());
+      if (result.status === "active") {
+        setPhase("confirm");
+        return;
+      }
+      if (result.status === "deleted") {
+        await onChanged(result.rootId).catch(() => null);
+        onClose();
+        return;
+      }
+      setPhase("pending");
+      await onChanged(result.rootId).catch(() => null);
+    } catch {
+      setPhase("unconfirmed");
+    }
+  };
+  return (
+    <EveDeleteDialogView
+      onCheck={() => {
+        void request("GET");
+      }}
+      onClose={onClose}
+
+      onDelete={() => {
+        void request("DELETE");
+      }}
+      phase={phase}
+      title={conversation.title}
+      scope={conversation.scope}
+    />
+  );
+};
+
+export { EveDeleteDialog, EveDeleteDialogView };
+export type { EveDeletionPhase };

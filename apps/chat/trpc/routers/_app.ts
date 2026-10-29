@@ -1,11 +1,7 @@
+import { installedRouters } from "@/composition/generated/installed-routers";
 import { createCallerFactory, createTRPCRouter } from "@/trpc/init";
-import { chatRouter } from "./chat.router";
-import { creditsRouter } from "./credits.router";
-import { documentRouter } from "./document.router";
-import { mcpRouter } from "./mcp.router";
-import { projectRouter } from "./project.router";
-import { settingsRouter } from "./settings.router";
-import { voteRouter } from "./vote.router";
+
+import { eveRouter } from "./eve.router";
 
 /**
  * This is the primary router for your server.
@@ -13,18 +9,13 @@ import { voteRouter } from "./vote.router";
  * All routers added in /api/routers should be manually added here.
  */
 
-export const appRouter = createTRPCRouter({
-  chat: chatRouter,
-  credits: creditsRouter,
-  vote: voteRouter,
-  document: documentRouter,
-  mcp: mcpRouter,
-  project: projectRouter,
-  settings: settingsRouter,
+const appRouter = createTRPCRouter({
+  eve: eveRouter,
+  ...installedRouters,
 });
 
-// export type definition of API
-export type AppRouter = typeof appRouter;
+// Export the type definition for the API.
+type AppRouter = typeof appRouter;
 
 /**
  * Create a server-side caller for the tRPC API.
@@ -33,4 +24,6 @@ export type AppRouter = typeof appRouter;
  * const res = await trpc.post.all();
  *       ^? Post[]
  */
-export const createCaller = createCallerFactory(appRouter);
+const createCaller = createCallerFactory(appRouter);
+export { appRouter, createCaller };
+export type { AppRouter };

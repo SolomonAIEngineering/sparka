@@ -1,14 +1,16 @@
-import { unstable_cache } from "next/cache";
+import type { AiGatewayModel } from "@chat-js/gateways/models";
+import type { ModelData } from "./model-data";
+import type { ReadonlyAiGatewayModel } from "./to-model-data";
+
 import { config } from "@/lib/config";
 import { createModuleLogger } from "@/lib/logger";
 import { getActiveGateway } from "./active-gateway";
-import type { AiGatewayModel } from "./ai-gateway-models-schemas";
-import type { ModelData } from "./model-data";
 import { toModelData } from "./to-model-data";
+import { unstable_cache } from "next/cache";
 
 const log = createModuleLogger("ai/models");
 
-async function fetchModelsRaw(): Promise<AiGatewayModel[]> {
+const fetchModelsRaw = async (): Promise<AiGatewayModel[]> => {
   const activeGateway = getActiveGateway();
 
   log.debug({ gateway: activeGateway.type }, "Fetching models from gateway");
@@ -27,12 +29,12 @@ async function fetchModelsRaw(): Promise<AiGatewayModel[]> {
     );
     throw error;
   }
-}
+};
 
 export const fetchModels = unstable_cache(
   async (): Promise<ModelData[]> => {
     const models = await fetchModelsRaw();
-    return models.map(toModelData);
+    return models.map((model: ReadonlyAiGatewayModel) => toModelData(model));
   },
   [`ai-gateway-models-${config.ai.gateway}`],
   {

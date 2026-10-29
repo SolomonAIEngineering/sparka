@@ -1,36 +1,46 @@
-import type React from "react";
-import { cn } from "@/lib/utils";
 import { Favicon } from "./favicon";
+
+import type React from "react";
+
+import { cn } from "@/lib/utils";
+
+const DEFAULT_MAX_VISIBLE_FAVICONS = 4;
 
 // Define a simpler interface for the sources needed by this component
 interface FaviconSource {
-  title?: string; // Title is optional, mainly for alt text
-  url: string;
+  // Title is optional, mainly for alt text
+  readonly title?: string;
+  readonly url: string;
 }
 
 interface FaviconGroupProps {
-  className?: string;
-  maxVisible?: number;
-  sources: FaviconSource[]; // Use the simpler interface
+  readonly className?: string;
+  readonly maxVisible?: number;
+  // Use the simpler interface
+  readonly sources: readonly FaviconSource[];
 }
 
 export const FaviconGroup: React.FC<FaviconGroupProps> = ({
   sources,
-  maxVisible = 4,
+  maxVisible = DEFAULT_MAX_VISIBLE_FAVICONS,
   className,
-}) => {
+}): React.JSX.Element => {
   const visibleSources = sources.slice(0, maxVisible);
 
   return (
     <div className={cn("flex items-center", className)}>
-      {visibleSources.map((source, index) => (
+      {visibleSources.map((source, index): React.JSX.Element => (
         <Favicon
-          alt={`Favicon for ${source.title || new URL(source.url).hostname}`}
+          alt={`Favicon for ${
+            typeof source.title === "string" && source.title !== ""
+              ? source.title
+              : new URL(source.url).hostname
+          }`}
           className={cn(
-            "h-5 w-5 rounded-full border-2 border-background",
+            "border-background h-5 w-5 rounded-full border-2",
             index > 0 ? "-ml-2" : ""
           )}
-          key={source.url || index}
+          key={source.url === "" ? index : source.url}
           style={{ zIndex: maxVisible - index }}
           url={`https://www.google.com/s2/favicons?domain=${new URL(source.url).hostname}&sz=32`}
         />

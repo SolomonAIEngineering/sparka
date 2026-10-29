@@ -1,4 +1,6 @@
+import { installedDatabaseSchemas } from "./composition/generated/installed-database";
 import { config } from "dotenv";
+import { databaseConnection } from "./lib/db/connection";
 import { defineConfig } from "drizzle-kit";
 
 config({
@@ -6,11 +8,16 @@ config({
 });
 
 export default defineConfig({
-  schema: "./lib/db/schema.ts",
-  out: "./lib/db/migrations",
-  dialect: "postgresql",
   dbCredentials: {
-    // biome-ignore lint: Forbidden non-null assertion.
-    url: process.env.DATABASE_URL!,
+    url: databaseConnection(
+      {
+        DATABASE_MIGRATION_URL: process.env.DATABASE_MIGRATION_URL,
+        DATABASE_URL: process.env.DATABASE_URL,
+      },
+      "migration"
+    ).url,
   },
+  dialect: "postgresql",
+  out: "./lib/db/migrations",
+  schema: ["./lib/db/schema.ts", ...installedDatabaseSchemas],
 });

@@ -1,20 +1,24 @@
-import { HydrateClient, prefetch, trpc } from "@/trpc/server";
-import { SharedChatPage } from "./shared-chat-page";
+import React, { Suspense } from "react";
 
-export default async function SharedChatPageRoute({
+import { ChatLoadingShell } from "@/components/chat-loading-shell";
+import { EveSharedPage } from "@/plugins/sharing/ui/shared-page";
+
+const SharedChatPageContent = async ({
   params,
 }: {
-  params: Promise<{ id: string }>;
-}) {
+  readonly params: Readonly<Promise<{ readonly id: string }>>;
+}): Promise<React.JSX.Element> => {
   const { id } = await params;
+  return <EveSharedPage id={id} />;
+};
 
-  // Prefetch the queries used in shared-chat-page.tsx
-  prefetch(trpc.chat.getPublicChat.queryOptions({ chatId: id }));
-  prefetch(trpc.chat.getPublicChatMessages.queryOptions({ chatId: id }));
-
-  return (
-    <HydrateClient>
-      <SharedChatPage id={id} />
-    </HydrateClient>
-  );
-}
+const SharedChatPageRoute = ({
+  params,
+}: {
+  readonly params: Readonly<Promise<{ readonly id: string }>>;
+}): React.JSX.Element => (
+  <Suspense fallback={<ChatLoadingShell />}>
+    <SharedChatPageContent params={params} />
+  </Suspense>
+);
+export default SharedChatPageRoute;
