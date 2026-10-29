@@ -10,10 +10,11 @@ import {
   compareProjects,
 } from "@chat-js/registry-validation";
 import type { ProjectFiles } from "@chat-js/registry-validation";
-import {
-  prepareValidationCore,
-  renderValidationProject,
-} from "../../registry/scripts/validation-project";
+import { renderValidationProject } from "../../registry/scripts/validation-project";
+import { scaffoldNativeProject } from "../src/helpers/native-scaffold";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import type { InstallationSelection } from "../../registry/installation";
 import { parsePackageJson } from "../src/helpers/package-manifest";
 import gatewayPackage from "@chat-js/gateways/package.json";
@@ -34,6 +35,19 @@ const comparable = (file: string): boolean =>
     file
   ) &&
   !file.endsWith(".tsbuildinfo");
+
+// Predict compositions on an independently initialized native shell, just as
+// create does. Keep whole-tree comparison: copying the actual app's native files
+// or excluding all UI files would hide accidental overwrites during add/sync.
+const prepareNativeCore = async (): Promise<Map<string, Uint8Array>> => {
+  const directory = await mkdtemp(path.join(tmpdir(), "chatjs-native-parity-"));
+  try {
+    await scaffoldNativeProject(directory, "bun", []);
+    return await readProjectFiles(directory, comparable);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+};
 
 const normalize = (source: string) => {
   const value = parseJsonObject(source, "components.json");
@@ -100,7 +114,7 @@ export const verifyInstallationParity = async (
   selection: InstallationSelection,
   name: string
 ): Promise<void> => {
-  fixture.core ??= await prepareValidationCore();
+  fixture.core ??= await prepareNativeCore();
   const predicted = await renderValidationProject(fixture.core, selection, {
     name,
     title: name

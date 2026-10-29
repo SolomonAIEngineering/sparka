@@ -1,4 +1,5 @@
-import { initializeShadcn } from "#cli/helpers/initialize-shadcn";
+import { scaffoldNativeProject } from "#cli/helpers/native-scaffold";
+import { createStagedProject } from "#cli/helpers/staged-project";
 import { generateBaseline } from "#cli/utils/generate-baseline";
 import { planSandboxInstallation } from "#cli/helpers/sandbox-installation";
 import { configureSandboxProvider } from "#cli/helpers/sandbox-provider";
@@ -28,11 +29,7 @@ import {
   promptVideoGenerationTool,
 } from "#cli/helpers/prompts";
 import { readFile, writeFile } from "node:fs/promises";
-import {
-  scaffoldElectron,
-  scaffoldFromGit,
-  scaffoldFromTemplate,
-} from "#cli/helpers/scaffold";
+import { scaffoldElectron, scaffoldFromGit } from "#cli/helpers/scaffold";
 import { Command } from "commander";
 import type { EnvVarEntry } from "#cli/helpers/env-checklist";
 import type { PackageManager } from "#cli/types";
@@ -482,9 +479,10 @@ const promptCreateSetup = async (
 const scaffoldProject = async (
   project: Readonly<ProjectTarget>,
   packageManager: PackageManager,
-  withElectron: boolean
+  withElectron: boolean,
+  shadcnArgs: readonly string[]
 ): Promise<void> => {
-  await scaffoldFromTemplate(project.targetDir, { packageManager });
+  await scaffoldNativeProject(project.targetDir, packageManager, shadcnArgs);
   if (withElectron) {
     await scaffoldElectron(project.targetDir, {
       packageManager,
@@ -695,19 +693,24 @@ const createProject = async (
   }
   const setup = await promptCreateSetup(options, project.targetDir);
   logger.break();
-  await scaffoldProject(project, packageManager, setup.withElectron);
-  await initializeShadcn(project.targetDir, shadcnArgs);
-  // Native init determines the actual library. Resolve again through the final
-  // namespace so descriptors and source match it, including indirect items.
-  setup.plan = await planInstallation(project.targetDir, setup.plan.selection, {
-    documents: options.documents,
-    fresh: true,
-  });
-  await writeConfiguration(project, setup);
-  const installedTools = await installRegistryItems(
-    packageManager,
-    project,
-    setup
+  const installedTools = await createStagedProject(
+    project.targetDir,
+    async (stage) => {
+      const stagedProject = { ...project, targetDir: stage };
+      await scaffoldProject(
+        stagedProject,
+        packageManager,
+        setup.withElectron,
+        shadcnArgs
+      );
+      // Resolve only after native init has selected the actual library.
+      setup.plan = await planInstallation(stage, setup.plan.selection, {
+        documents: options.documents,
+        fresh: true,
+      });
+      await writeConfiguration(stagedProject, setup);
+      return await installRegistryItems(packageManager, stagedProject, setup);
+    }
   );
   printNextSteps(packageManager, project, setup, installedTools);
 };
@@ -733,10 +736,7 @@ export const create = new Command()
   )
   .description("scaffold a new ChatJS chat application")
   .argument("[directory]", "target directory for the project")
-  .argument(
-    "[shadcn-options...]",
-    "reserved native shadcn options after -- (requires completed UI migration)"
-  )
+  .argument("[shadcn-options...]", "native shadcn options after --")
   .option(
     "--gateway <gateway>",
     "gateway name, registry item URL, or local JSON path"
