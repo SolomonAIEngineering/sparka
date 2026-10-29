@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { rejects } from "node:assert/strict";
 import {
   mkdtemp,
   mkdir,
@@ -23,12 +24,13 @@ test.each(["native init", "composition install"])(
     const target = path.join(root, "app");
     try {
       await mkdir(target);
-      expect(
+      await rejects(
         createStagedProject(target, async (stage) => {
           await writeFile(path.join(stage, "components.json"), "{}");
           throw new Error(phase);
-        })
-      ).rejects.toThrow(phase);
+        }),
+        { message: phase }
+      );
       expect(await readdir(target)).toEqual([]);
       expect(await readdir(root)).toEqual(["app"]);
     } finally {
@@ -41,13 +43,14 @@ test("a target populated during creation is preserved", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "chatjs-create-race-"));
   const target = path.join(root, "app");
   try {
-    expect(
+    await rejects(
       createStagedProject(target, async (stage) => {
         await writeFile(path.join(stage, "generated.txt"), "generated");
         await mkdir(target);
         await writeFile(path.join(target, "user.txt"), "keep");
-      })
-    ).rejects.toThrow("Target changed");
+      }),
+      /Target changed/u
+    );
     expect(await readdir(target)).toEqual(["user.txt"]);
     expect(await readFile(path.join(target, "user.txt"), "utf-8")).toBe("keep");
   } finally {
@@ -111,6 +114,51 @@ test("creating in the current directory preserves relative file access", async (
     expect(errors).toBe("");
     expect(await child.exited).toBe(0);
     expect(output).toBe("complete");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("directory transfers work when rename rejects existing directories", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "chatjs-create-windows-"));
+  const target = path.join(root, "app");
+  try {
+    await mkdir(target);
+    const helper = new URL("staged-project.ts", import.meta.url).href;
+    // Isolate the platform and filesystem mocks from the rest of the suite.
+    const child = Bun.spawn(
+      [
+        process.execPath,
+        "--eval",
+        `import { mock } from "bun:test";
+         import * as fs from "node:fs/promises";
+         import path from "node:path";
+         const original = { ...fs };
+         mock.module("node:fs/promises", () => ({
+           ...original,
+           rename: async (source, destination) => {
+             if (await original.lstat(destination).catch(() => undefined)) {
+               throw new Error("Windows rename cannot replace a directory");
+             }
+             return original.rename(source, destination);
+           },
+         }));
+         Object.defineProperty(process, "platform", { value: "win32" });
+         const { createStagedProject } = await import(${JSON.stringify(helper)});
+         await createStagedProject(".", async (stage) => {
+           await original.mkdir(path.join(stage, "nested"));
+           await original.writeFile(path.join(stage, "nested", "file.txt"), "complete");
+         });
+         process.stdout.write(await original.readFile("nested/file.txt", "utf8"));`,
+      ],
+      { cwd: target, stdout: "pipe", stderr: "pipe" }
+    );
+    const output = await new Response(child.stdout).text();
+    const errors = await new Response(child.stderr).text();
+    expect(errors).toBe("");
+    expect(await child.exited).toBe(0);
+    expect(output).toBe("complete");
+    expect(await readdir(root)).toEqual(["app"]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

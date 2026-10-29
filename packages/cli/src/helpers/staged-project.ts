@@ -15,9 +15,11 @@ import path from "node:path";
 const transferEntry = async (source: string, destination: string) => {
   const stats = await lstat(source);
   if (stats.isDirectory()) {
-    // Reserve the name exclusively, then move the whole subtree (including
-    // node_modules) without copying it or replacing a user's directory.
-    await mkdir(destination);
+    // Windows rename already rejects an existing directory. On POSIX, reserve
+    // the name exclusively before moving the subtree (including node_modules).
+    if (process.platform !== "win32") {
+      await mkdir(destination);
+    }
     await rename(source, destination);
   } else if (stats.isSymbolicLink()) {
     await symlink(await readlink(source), destination);
